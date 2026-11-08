@@ -54,7 +54,6 @@ class Settings:
     voice_enabled: bool = False
     transcription_url: str = 'http://127.0.0.1:8002'
     transcription_api_key: str = ''
-    typesafe_api_key: str = ''
 
     @classmethod
     def from_env(cls):

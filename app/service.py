@@ -119,8 +119,6 @@ def route(state, user, *, mode=None, focus=None, selected=None, origin=None):
             if job['status'] in ('queued', 'running'):
                 cancel_job(state, job)
     for outbox in state['outbox'].values():
-        if outbox.get('reaction', {}).get('action') == 'remove':
-            continue  # Cleanup targets the original message even after navigation.
         if outbox['user'] == user['id'] and outbox['revision'] != user['revision'] and outbox['id'] != origin:
             cancel_outbox(state, outbox)
     if origin:
@@ -222,8 +220,7 @@ class Service:
                     'mode': user['mode'], 'focus': user['focus'], 'selected': user['selected'],
                     'revision': user['revision'], 'question': text, 'attempts': 0, 'generations': 0,
                     'steps': [], 'model_replies': [], 'space_id': event.space_id, 'agent_id': event.agent_id,
-                    'destination': event.destination, 'assignment': assignment['id'], 'received_at': event.occurred_at,
-                    'message_id': event.message_id}
+                    'destination': event.destination, 'assignment': assignment['id'], 'received_at': event.occurred_at}
                 state['jobs'][job['id']] = job
                 if event.attachment_id:
                     job['audio'] = {'attachment_id': event.attachment_id, 'status': 'pending', 'attempts': 0}
@@ -341,10 +338,10 @@ class Service:
         if len(job['steps']) >= self.limits.tools_per_turn:
             raise DomainError('This turn reached its tool limit. Please send another message.')
         schemas = {'create_project': {'name': str}, 'list_projects': {}, 'select_project': {'code': str},
-                   'update_instructions': {'instructions': str}, 'set_reactions': {'enabled': bool}, 'issue_vault_link': {}}
+                   'update_instructions': {'instructions': str}, 'issue_vault_link': {}}
         if name not in schemas or set(arguments) != set(schemas[name]) or any(type(arguments[k]) is not t for k, t in schemas.get(name, {}).items()):
             raise DomainError('Unsupported tool or invalid arguments.')
-        if any(not v.strip() or len(v.encode()) > (4096 if k == 'instructions' else 120) for k, v in arguments.items() if isinstance(v, str)):
+        if any(not v.strip() or len(v.encode()) > (4096 if k == 'instructions' else 120) for k, v in arguments.items()):
             raise DomainError('Tool arguments are empty or too long.')
         step = {'id': f'{job["id"]}:{len(job["steps"])}', 'name': name, 'arguments': arguments,
                 'target': job['focus'], 'expected_revision': job['revision'], 'created': now}
@@ -385,7 +382,7 @@ class Service:
                 'instructions': ('Be a friendly, curious little guide to the notes your owner shares. Talk like a helpful person, '
                     'with a little warmth and occasional light humor, not a documentation page. Keep answers short and useful. '
                     'If you don’t know something from your notes, say so kindly instead of guessing. '
-                    'Support factual answers with note name and heading citations.'), 'created': now, 'reactions_enabled': False}
+                    'Support factual answers with note name and heading citations.'), 'created': now}
             state['projects'][project_id] = project
             route(state, user, mode='builder', focus=project_id, origin=job['id'])
             result = {'id': project_id, 'name': project['name'], 'code': code}
@@ -398,10 +395,6 @@ class Service:
             owned(state, user['id'], project['id'])
             route(state, user, mode='builder', focus=project['id'], origin=job['id'])
             result = {'id': project['id'], 'name': project['name'], 'code': project['code']}
-        elif name == 'set_reactions':
-            project = owned(state, user['id'], step['target'])
-            project['reactions_enabled'] = args['enabled']
-            result = {'reactions_enabled': args['enabled']}
         elif name == 'update_instructions':
             project = owned(state, user['id'], step['target'])
             project['instructions'] = args['instructions']
