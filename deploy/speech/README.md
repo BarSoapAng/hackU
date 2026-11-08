@@ -17,6 +17,13 @@ Windows uses FFmpeg 9.0.2 from the ignored `.local/ffmpeg` directory, selected b
 `FFMPEG_BINARY` in the private `.env`. Its vendor archive SHA-256 was verified.
 The backend, ngrok, and WSL tunnel must remain running for the local demo.
 
+A later outage on 2026-11-08 was caused by both local SSH forwards disappearing;
+the remote speech container remained healthy. The forwards were restored using
+[`tools/inference_tunnel.sh`](../../tools/inference_tunnel.sh), which keeps WSL
+attached and reconnects SSH automatically. The latest failed 21.76-second
+recording then transcribed in 0.86 seconds, and a builder generation passed.
+That diagnostic did not replay the expired turn or send another reply.
+
 The first canary exposed an inaccessible temporary directory created by sandbox
 tests. That turn expired and received one failure notice. Tests now isolate
 their audio directories; runtime file creation fails promptly on permission
@@ -96,15 +103,20 @@ Sources: [NVIDIA model card](https://huggingface.co/nvidia/nemotron-speech-strea
    Copy the credential into the backend's private environment without putting
    it in chat, logs, or version control. Do not reuse the language-model key.
 
-3. Establish a separate loopback SSH tunnel on the backend host (Bash/WSL).
+3. Establish loopback SSH tunnels on the backend host (Bash/WSL).
    The tunnel must be reachable from the backend's own network namespace;
    a container's `127.0.0.1` is not its host. Deploy a private tunnel in that
    namespace or an authenticated HTTPS endpoint if the backend is containerized.
    Never expose the Brev speech port publicly.
 
    ```bash
-   ssh -N -L 127.0.0.1:8002:127.0.0.1:8002 -o ExitOnForwardFailure=yes secure-amethyst-ferret
+   bash tools/inference_tunnel.sh
    ```
+
+   Run from the repository root and keep it running. This supervises both the
+   builder and speech forwards, using local port 8003 for speech. The local
+   demo already runs it in a hidden Windows process. Do not start overlapping
+   standalone forwards on those ports.
 
 4. Check authenticated readiness, unauthorized requests, and a synthetic WAV
    through that tunnel. Run the existing builder's `deploy/nemotron/verify.py`
@@ -122,7 +134,7 @@ Sources: [NVIDIA model card](https://huggingface.co/nvidia/nemotron-speech-strea
    python3 verify.py --audio /tmp/synthetic-voice.wav --expected-word bakery
    ```
 
-5. Set `TRANSCRIPTION_URL=http://127.0.0.1:8002` and its credential, then
+5. Set `TRANSCRIPTION_URL=http://127.0.0.1:8003` and its credential, then
    temporarily set `VOICE_ENABLED=true` for a controlled real iMessage test
    and restart the single backend process as part of the requested rollout.
    Send an English voice note to Hypha, then a Sprout with indexed notes.
@@ -134,7 +146,7 @@ Sources: [NVIDIA model card](https://huggingface.co/nvidia/nemotron-speech-strea
 ## Retention, measurements, and rollback
 
 Recordings exist only in temporary local files and request memory. Backend
-files live under the OS temp directory's `acorn-voice` directory; speech files
+files live under the OS temp directory's `hypha-voice` directory; speech files
 live in the container's `/tmp` tmpfs. Completion/failure removes them, and
 single-process startup removes abandoned files. No recording is written to
 SpacetimeDB. Transcripts use existing question/conversation retention: turn

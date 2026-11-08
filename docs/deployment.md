@@ -9,6 +9,24 @@ HTTPS tunnel; the existing WSL/Brev forward supplies Nemotron. The live URL and
 all credentials are in ignored `.env`. This demo depends on the laptop and
 tunnels staying online; it is not a hosted production deployment.
 
+The builder and speech forwards now run together under
+[`tools/inference_tunnel.sh`](../tools/inference_tunnel.sh). A persistent hidden
+Windows `wsl.exe` process keeps WSL attached; SSH keepalives detect connection
+loss and the script reconnects after three seconds. It binds only loopback:
+local 8000 to Brev's builder 8000, and local 8003 to speech 8002. The local
+dashboard keeps port 8002. Its Windows PID is recorded in
+`%LOCALAPPDATA%/Temp/hackutd-inference-tunnels.pid`; timestamped diagnostics use
+`hackutd-inference-tunnels-*.err.log` in the same directory. This is a running
+demo process, not a Windows boot service.
+
+For a later manual start from the repository in WSL, leave this command running:
+
+```bash
+bash tools/inference_tunnel.sh
+```
+
+The script rejects a second supervisor and stops its SSH child on Ctrl+C.
+
 The listener PID and process logs are under `%LOCALAPPDATA%/Temp/` with names
 `hackutd-backend-listener.pid`, `hackutd-backend.stderr.log`, and
 `hackutd-ngrok.log`. The Python launcher can have a different PID from the actual
