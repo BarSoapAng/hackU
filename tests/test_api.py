@@ -279,10 +279,27 @@ class TestApi(IsolatedAsyncioTestCase):
 
     async def test_share_rejects_invalid_requests_before_enrollment_and_handles_capacity(self):
         self.photon.enroll = AsyncMock(side_effect=PhotonError('PHOTON_ASSIGNMENT_CAPACITY'))
-        assert (await self.client.post('/api/sprouts/FIRST/connect', json={'phone': '4155550999'})).status_code == 400
+        for phone in ['415555099', '41555509999', '415abc0999']:
+            assert (await self.client.post('/api/sprouts/FIRST/connect', json={'phone': phone})).status_code == 400
         assert (await self.client.post('/api/sprouts/UNKNOWN/connect', json={'phone': '+14155550999'})).status_code == 404
         assert (await self.client.post('/api/sprouts/FIRST/connect', headers={'Origin': 'https://unrelated.test'}, json={'phone': '+14155550999'})).status_code == 403
         self.photon.enroll.assert_not_awaited()
         response = await self.client.post('/api/sprouts/FIRST/connect', json={'phone': '+14155550999'})
         assert response.status_code == 503 and 'spots are full' in response.json()['detail']
         assert '+14155550999' not in (await self.service.snapshot())['assignments']
+
+    async def test_share_defaults_local_numbers_to_plus_one_and_preserves_international_numbers(self):
+        for phone, expected in [
+            ('4155550999', '+14155550999'),
+            ('(415) 555-0999', '+14155550999'),
+            (' 415 555 0999 ', '+14155550999'),
+            ('1-415-555-0999', '+14155550999'),
+            ('+44 20 7946 0958', '+442079460958'),
+        ]:
+            with self.subTest(phone=phone):
+                self.photon.enroll = AsyncMock(return_value=Assignment('guest-assignment', expected, '+16283166222', self.now[0]))
+                response = await self.client.post('/api/sprouts/FIRST/connect', json={'phone': phone})
+                assert response.status_code == 200
+                self.photon.enroll.assert_awaited_once_with(expected, 'join:' + token_hash(expected))
+                state = await self.service.snapshot()
+                assert state['assignments'][expected]['destination'] == '+16283166222'

@@ -5,29 +5,40 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <title>Sprout notes · Hypha</title>
+  <link href="https://db.onlinewebfonts.com/c/4a373e70cd01dec089c1dd1185ceba51?family=Maison+Neue+Bold" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;display=swap" rel="stylesheet">
   <style nonce="__NONCE__">
-    :root{font-family:system-ui,sans-serif;color:#17332b;background:#f5f7f4;color-scheme:light}
-    *{box-sizing:border-box}body{margin:0}main{max-width:1060px;margin:auto;padding:24px 18px}
-    header{margin-bottom:24px}h1{font-size:28px;letter-spacing:-1px;margin:0 0 8px}p{line-height:1.5;margin:8px 0}
-    .muted{color:#53675e;font-size:14px}.layout{display:grid;grid-template-columns:260px 1fr;gap:24px}
-    .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}button,.import{border:1px solid #b8c9bf;border-radius:8px;background:white;color:#17332b;padding:10px 14px;font:inherit;cursor:pointer}
-    button:disabled{opacity:.5;cursor:default}.primary{background:#24634b;color:white;border-color:#24634b}.danger{color:#8b2828}
-    label{display:block;font-size:14px;font-weight:600;margin-bottom:8px}input[type=text],textarea{width:100%;border:1px solid #b8c9bf;border-radius:8px;background:white;color:#17332b;padding:12px;font:inherit}
-    textarea{min-height:50vh;resize:vertical;font-family:ui-monospace,monospace;font-size:14px;line-height:1.55;margin-bottom:12px}
-    input[type=text]{margin-bottom:16px}ul{list-style:none;padding:0;margin:0}li{margin:8px 0}li button{width:100%;text-align:left;overflow-wrap:anywhere}
-    li button[aria-current=true]{border-color:#24634b;background:#e6efe8}.filename{display:block}.state{font-size:12px;color:#53675e}
-    #message{min-height:24px;margin-bottom:16px;overflow-wrap:anywhere}#message[data-error=true]{color:#8b2828}#empty{padding:32px 16px;text-align:center;border:1px dashed #b8c9bf;border-radius:12px}
-    .hidden{display:none!important}:focus-visible{outline:3px solid #3f896b;outline-offset:3px}
-    @media(max-width:680px){main{padding:20px 14px}.layout{grid-template-columns:1fr;gap:16px}#files{display:flex;gap:8px;overflow-x:auto}li{min-width:160px;max-width:230px}textarea{min-height:45vh}}
+    :root{font-family:"DM Sans",sans-serif;color:#3b291f;background:#faf8f5;color-scheme:light;-webkit-font-smoothing:antialiased}
+    *{box-sizing:border-box}body{margin:0;min-height:100svh;display:flex;flex-direction:column;padding:0 28px}
+    .site-header{display:flex;align-items:center;gap:10px;width:100%;max-width:1120px;margin:0 auto;padding:28px 0;border-bottom:1px solid #e5dfd9}
+    .brand,h1,h2{font-family:"Maison Neue Bold",sans-serif;font-weight:700;letter-spacing:-.04em}.brand{font-size:25px;line-height:1}
+    main{width:100%;max-width:1120px;margin:0 auto;padding:48px 0;flex:1}h1{font-size:clamp(36px,6vw,48px);line-height:1.08;margin:16px 0}h2{font-size:22px;margin:0 0 20px}
+    p{line-height:1.65;margin:8px 0}.eyebrow{font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#746b64;margin:0}.muted{color:#746b64;font-size:14px}
+    .layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:32px;margin-top:28px}aside{min-width:0;padding-right:24px;border-right:1px solid #e5dfd9}section{min-width:0;padding:24px;background:#fff;border:1px solid #e5dfd9;border-radius:12px}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}button{border:1px solid #d6cec6;border-radius:8px;background:transparent;color:#3b291f;padding:10px 14px;min-height:44px;font:inherit;font-size:14px;font-weight:500;cursor:pointer}
+    button:hover{background:#f0ebe5}button:disabled{opacity:.5;cursor:default}.primary{background:#3b291f;color:#fff;border-color:#3b291f}.primary:hover{background:#514035}.danger{margin-left:auto}
+    label{display:block;font-size:14px;font-weight:500;margin-bottom:10px}input[type=text],textarea{width:100%;border:1px solid #d6cec6;border-radius:8px;background:#fff;color:inherit;padding:14px 16px;font:inherit;font-size:16px}
+    input::placeholder,textarea::placeholder{color:#847a72}textarea{min-height:45vh;resize:vertical;line-height:1.65;margin-bottom:16px}
+    input[type=text]{margin-bottom:24px}ul{list-style:none;padding:0;margin:0}li{margin:8px 0}li button{width:100%;text-align:left;overflow-wrap:anywhere;border-color:transparent;padding:12px}
+    li button[aria-current=true]{border-color:#d6cec6;background:#f0ebe5}.filename{display:block}.state{display:block;margin-top:4px;font-size:12px;color:#746b64}
+    #message{min-height:24px;margin:20px 0 0;font-size:14px;color:#746b64;overflow-wrap:anywhere}#message[data-error=true]{color:#8b2828}#empty{padding:64px 16px;text-align:center;color:#746b64}#file-status{overflow-wrap:anywhere}
+    .hidden{display:none!important}:focus-visible{outline:2px solid #3b291f;outline-offset:4px}
+    footer{width:100%;max-width:1120px;margin:0 auto;padding:22px 0;border-top:1px solid #e5dfd9;color:#746b64;font-size:12px;text-align:center}
+    @media(max-width:680px){body{padding:0 24px}.site-header{padding:24px 0}main{padding:36px 0}.layout{grid-template-columns:1fr;gap:24px}aside{padding:0 0 20px;border-right:0;border-bottom:1px solid #e5dfd9}section{padding:20px}#files{display:flex;gap:8px;overflow-x:auto;padding:4px}li{flex:0 0 180px;margin:0}textarea{min-height:40vh}}
   </style>
 </head>
 <body>
+<header class="site-header">
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21v-8M12 17C6 17 3 14 3 8c6 0 9 3 9 9ZM12 13c0-6 3-10 9-10 0 6-3 10-9 10ZM8 21h8"/></svg>
+  <span class="brand">Hypha</span>
+</header>
 <main>
-  <header><h1>Sprout notes</h1><p class="muted">Add notes here and your Sprout can use them once they’re ready.</p></header>
+  <header><p class="eyebrow">A little room to grow</p><h1>Sprout notes</h1><p class="muted">Keep your knowledge together. Add and organize the notes your Sprout learns from.</p></header>
   <p id="message" role="status" aria-live="polite">Opening your Sprout…</p>
   <div id="workspace" class="layout hidden">
     <aside aria-label="Notes">
-      <div class="toolbar"><button id="create">New note</button><button id="import">Import note</button><button id="refresh">Refresh</button><input id="upload" type="file" accept=".md,text/markdown" class="hidden"></div>
+      <h2>Your notes</h2>
+      <div class="toolbar"><button id="create" class="primary">New note</button><button id="import">Import note</button><button id="refresh">Refresh</button><input id="upload" type="file" accept=".md,text/markdown" class="hidden"></div>
       <p id="file-count" class="muted"></p><ul id="files"></ul>
     </aside>
     <section aria-label="Note editor">
@@ -40,7 +51,9 @@
       </div>
     </section>
   </div>
+  <noscript><p class="muted">Enable JavaScript to open and edit your Sprout’s notes.</p></noscript>
 </main>
+<footer>Your knowledge, ready to sprout.</footer>
 <script nonce="__NONCE__">
 (() => {
   let token = location.hash.slice(1);

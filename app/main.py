@@ -181,9 +181,14 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
             raise DomainError('That Sprout is no longer available.', 404)
         try:
             body = AgentConnection.model_validate_json(await bounded_body(request, 1024))
-            phone = normalize_phone(body.phone)
+            phone = re.sub(r'[ ()-]', '', body.phone.strip())
+            if re.fullmatch(r'[0-9]{10}', phone):
+                phone = '+1' + phone
+            elif re.fullmatch(r'1[0-9]{10}', phone):
+                phone = '+' + phone
+            phone = normalize_phone(phone)
         except (ValueError, ValidationError):
-            raise DomainError('Enter your iMessage number with its country code, such as +1 204 555 0123.') from None
+            raise DomainError('Enter a 10-digit iMessage number, or include a country code such as +44 for international numbers.') from None
         now = service.clock()
         def reserve(state):
             consume(state, f'join-minute:{token_hash(request.client.host)}:{int(now // 60)}', 5)
@@ -211,7 +216,8 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
         nonce = secrets.token_urlsafe(24)
         html = Path(__file__).with_name("static").joinpath("notes.html").read_text(encoding="utf-8")
         return HTMLResponse(html.replace("__NONCE__", nonce), headers={"Content-Security-Policy":
-            f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
+            f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}' https://db.onlinewebfonts.com https://fonts.googleapis.com; "
+            "font-src https://db.onlinewebfonts.com https://fonts.gstatic.com; "
             "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"})
 
     @app.get("/api/notes")
