@@ -51,6 +51,7 @@ class Settings:
     active_key: str = 'v1'
     nemotron_model: str = 'nemotron-builder'
     project_model: str = 'gpt-5.6-luna'
+    typesafe_api_key: str = ''
 
     @classmethod
     def from_env(cls):

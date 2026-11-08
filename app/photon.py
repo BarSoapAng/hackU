@@ -209,7 +209,7 @@ class PhotonClient:
         try:
             data = response.json()
             status, message_id = data["status"], data["id"]
-            if status not in {"dispatched", "accepted", "delivered", "failed"} or not isinstance(message_id, str):
+            if status not in {"dispatched", "accepted", "delivered", "read", "failed"} or not isinstance(message_id, str):
                 return SendResult("unknown")
             return SendResult(status, message_id)
         except (ValueError, KeyError, TypeError):
@@ -245,6 +245,23 @@ class PhotonClient:
         if result.message_id != message_id:
             return SendResult("unknown", message_id)
         return result
+
+    async def react(self, space_id: str, agent_id: str, message_id: str,
+                    emoji: str, action: str, idempotency_key: str) -> SendResult:
+        if (not all((space_id, agent_id, message_id, idempotency_key))
+                or emoji not in ('👀', '👍', '❤️') or action not in ('add', 'remove')):
+            raise ValueError('A reaction requires its persisted target, identity and supported content.')
+        try:
+            response = await self._request('POST', '/messages',
+                headers={'Idempotency-Key': idempotency_key},
+                json={'spaceId': space_id, 'senderId': agent_id, 'parentMessageId': message_id,
+                      'content': {'type': 'reaction', 'reaction': emoji, 'action': action}})
+        except httpx.TransportError:
+            return SendResult('unknown')
+        if response.status_code >= 500 or response.status_code in (408, 409):
+            return SendResult('unknown')
+        self._check(response)
+        return self._result(response)
 
     async def mark_read(self, message_id: str) -> SendResult:
         if not message_id:
