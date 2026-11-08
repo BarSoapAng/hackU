@@ -51,6 +51,9 @@ class Settings:
     active_key: str = 'v1'
     nemotron_model: str = 'nemotron-builder'
     project_model: str = 'gpt-5.6-luna'
+    voice_enabled: bool = False
+    transcription_url: str = 'http://127.0.0.1:8002'
+    transcription_api_key: str = ''
     typesafe_api_key: str = ''
 
     @classmethod
@@ -59,10 +62,20 @@ class Settings:
         for field in fields(cls):
             value = os.environ.get(field.name.upper())
             if value is not None:
+                if field.name == 'voice_enabled':
+                    if value.lower() not in ('true', 'false'):
+                        raise ValueError('VOICE_ENABLED must be true or false')
+                    value = value.lower() == 'true'
                 values[field.name] = value
         settings = cls(**values)
         if not settings.public_url.startswith('https://'):
             raise ValueError('PUBLIC_URL must use HTTPS')
         if settings.project_model != 'gpt-5.6-luna':
             raise ValueError('A project model change requires an explicit deployment decision')
+        if settings.voice_enabled:
+            from urllib.parse import urlsplit
+            url = urlsplit(settings.transcription_url)
+            if not settings.transcription_api_key or url.username or url.password or url.query or url.fragment or not url.hostname or (
+                    url.scheme != 'https' and not (url.scheme == 'http' and url.hostname in ('localhost', '127.0.0.1', '::1'))):
+                raise ValueError('Voice requires a credential and an HTTPS or loopback transcription URL')
         return settings

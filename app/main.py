@@ -271,6 +271,7 @@ def production_app() -> FastAPI:
     from app.security import Keyring
     from app.service import Service
     from app.worker import Worker
+    from app.voice import Transcriber
 
     settings = Settings.from_env()
     store = SpacetimeStore(settings.database_url, settings.database_name, settings.database_token)
@@ -283,7 +284,8 @@ def production_app() -> FastAPI:
     from app.reactions import JevClient
     jev = JevClient(http, settings.typesafe_api_key) if settings.typesafe_api_key else None
     service = Service(store, Keyring.from_json(settings.encryption_keys, settings.active_key), settings.public_url, Limits.from_env())
-    app = create_app(service, Worker(service, models, embeddings, photon, jev), settings.photon_webhook_secret,
+    transcriber = Transcriber(http, settings.transcription_url, settings.transcription_api_key) if settings.voice_enabled else None
+    app = create_app(service, Worker(service, models, embeddings, photon, jev, transcriber=transcriber), settings.photon_webhook_secret,
                      settings.photon_project_id, run_worker=True)
 
     async def close():

@@ -4,6 +4,9 @@ import copy
 import json
 import logging
 import secrets
+import time
+
+import httpx
 
 from app.database import DatabaseUnavailable
 from app.photon import PhotonError, SendResult
@@ -12,9 +15,11 @@ from app.telemetry import recover_requests, request_context
 
 
 class Worker:
-    def __init__(self, service, models, embeddings, photon, jev=None):
+    def __init__(self, service, models, embeddings, photon, jev=None, *, transcriber=None):
         self.service, self.models, self.embeddings, self.photon = service, models, embeddings, photon
         self.jev = jev
+        self.transcriber = transcriber
+        self.transcriptions = asyncio.Lock()
         self.generations = asyncio.Semaphore(2)
         self.stopping = asyncio.Event()
 
@@ -25,6 +30,11 @@ class Worker:
             jobs = state['jobs']
             def exhaust(job):
                 cancel_job(state, job, 'failed')
+                if job.get('audio') and job['audio']['status'] != 'completed':
+                    from app.voice import VoiceError
+                    job['audio'].update(status='failed', failure='timeout')
+                    self.service._complete(state, job, str(VoiceError('timeout')), now)
+                    job['status'] = 'failed'
                 if job['kind'] == 'index':
                     file = state['files'].get(job['file'])
                     if file and file['version'] == job['version'] and file['project'] == job['project']:
@@ -344,6 +354,56 @@ class Worker:
                     self._reaction_box(state, job, '👀', 'remove', now)
         await self.service.store.transaction(schedule)
 
+    async def transcribe(self, job):
+        from app.voice import VoiceError, prepare_audio
+        current = check_job(await self.service.snapshot(), job['id'], job['claim'], self.service.clock())
+        if current['audio']['status'] == 'completed':
+            return
+        if not self.transcriber:
+            raise VoiceError('unavailable')
+        async with self.transcriptions:
+            now = self.service.clock()
+            def start(state):
+                audio = check_job(state, job['id'], job['claim'], now)['audio']
+                audio.setdefault('deadline', min(job['deadline'], now + 45))
+                audio.setdefault('queue_wait_ms', round(max(0, now - job['created']) * 1000))
+                return copy.deepcopy(audio)
+            audio = await self.service.store.transaction(start)
+            started = time.monotonic()
+            try:
+                if audio['deadline'] <= now:
+                    raise VoiceError('timeout')
+                async with asyncio.timeout(audio['deadline'] - now):
+                    while True:
+                        def reserve(state):
+                            current = check_job(state, job['id'], job['claim'], self.service.clock())
+                            if current['audio']['attempts'] >= 2:
+                                raise VoiceError('unavailable')
+                            current['audio']['attempts'] += 1
+                            current['audio']['status'] = 'running'
+                            return current['audio']['attempts']
+                        attempt = await self.service.store.transaction(reserve)
+                        try:
+                            text, metadata = await prepare_audio(self.photon, audio['attachment_id'], self.transcriber)
+                            break
+                        except (httpx.HTTPError, PhotonError, TimeoutError) as exc:
+                            transient = isinstance(exc, (httpx.TransportError, TimeoutError)) or (
+                                isinstance(exc, PhotonError) and (exc.status in (408, 409, 429) or (exc.status or 0) >= 500)) or (
+                                isinstance(exc, httpx.HTTPStatusError) and (exc.response.status_code in (408, 429) or exc.response.status_code >= 500))
+                            if not transient or attempt >= 2:
+                                raise VoiceError('timeout' if isinstance(exc, TimeoutError) else 'unavailable') from None
+                            await asyncio.sleep(5 if isinstance(exc, PhotonError) and exc.status == 409 else 1)
+                    if not text.strip():
+                        raise VoiceError('silence')
+                    latency_ms = round((time.monotonic() - started) * 1000)
+                    def persist(state):
+                        current = check_job(state, job['id'], job['claim'], self.service.clock())
+                        current['question'] = redact_links(text.strip())
+                        current['audio'].update(metadata, status='completed', latency_ms=latency_ms)
+                    await self.service.store.transaction(persist)
+            except TimeoutError:
+                raise VoiceError('timeout') from None
+
     async def run_job(self, job):
         context = request_context.set((self.service, job['id'], job['claim']))
         heartbeat = asyncio.create_task(self.heartbeat(job))
@@ -351,12 +411,17 @@ class Worker:
             async with asyncio.timeout(max(.01, job['deadline'] - self.service.clock())):
                 if job['kind'] == 'index':
                     await self.index(job)
-                elif await self.react_to_turn(job):
-                    pass
-                elif job['mode'] == 'builder':
-                    await self.builder(job)
                 else:
-                    await self.answer(job)
+                    if job.get('audio'):
+                        await self.transcribe(job)
+                    if await self.service.handle_command(job):
+                        return
+                    if not job.get('audio') and await self.react_to_turn(job):
+                        return
+                    if job['mode'] == 'builder':
+                        await self.builder(job)
+                    else:
+                        await self.answer(job)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -395,14 +460,23 @@ class Worker:
                 current.update(status='queued', retry_at=now + delay)
                 return
             cancel_job(state, current, 'failed')
+            if current.get('audio') and current['audio']['status'] != 'completed':
+                from app.voice import VoiceError
+                error_code = getattr(error, 'code', 'timeout' if isinstance(error, TimeoutError) else 'unavailable')
+                current['audio'].update(status='failed', failure=error_code)
+                error_message = str(VoiceError(error_code))
+            else:
+                error_message = None
             message = str(error) if isinstance(error, DomainError) and error.status != 409 else 'I could not finish this turn. Please try again.'
             # Failure messages never carry capabilities from an unfinished operation.
-            self.service._complete(state, current, message, now)
+            self.service._complete(state, current, error_message or message, now)
             current['status'] = 'failed'
         await self.service.store.transaction(fail)
 
     async def recover(self):
         """Only after stopping the previous process. An interrupted submit may have sent."""
+        from app.voice import clean_audio
+        clean_audio()
         def recover(state):
             initialize(state)
             recover_requests(state)
@@ -576,6 +650,8 @@ class Worker:
                 if job['status'] not in ('queued', 'running') and job['created'] <= now - 7 * 86400:
                     for key in ('question', 'trace', 'pending_calls', 'model_replies'):
                         job.pop(key, None)
+                    if job.get('audio'):
+                        job['audio'].pop('attachment_id', None)
                     for step in job.get('steps', []):
                         step.pop('arguments', None)
             for box in state['outbox'].values():

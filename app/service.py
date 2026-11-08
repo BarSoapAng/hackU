@@ -50,6 +50,11 @@ def chat_command(text):
     return None
 
 
+def deterministic_input(text):
+    return bool(chat_command(text)) or bool(re.search(
+        r'\b(reset|clear|erase|forget|delete)\b.*\b(history|conversation|chat|memory)\b', text, re.I))
+
+
 def available(state, project_id):
     project = state['projects'].get(project_id)
     if not project or project.get('deleted'):
@@ -133,6 +138,9 @@ def check_job(state, job_id, claim, now):
         user = state['users'][job['user']]
         if job['revision'] != user['revision']:
             raise DomainError('This turn was superseded by navigation.', 409)
+        assignment = state['assignments'].get(job['user'])
+        if not assignment or assignment['id'] != job.get('assignment') or assignment['destination'] != job['destination'] or assignment['created'] >= job['received_at']:
+            raise DomainError('This assignment is no longer current.', 409)
     if job.get('project'):
         available(state, job['project'])
     return job
@@ -186,7 +194,7 @@ class Service:
                     'mode': 'builder', 'focus': None, 'selected': None, 'revision': 0, 'sequence': 0})
                 pending = [j for j in state['jobs'].values() if j['status'] in ('queued', 'running') and j['kind'] == 'turn']
                 text = redact_links(event.text.strip())
-                deterministic = bool(chat_command(text)) or bool(re.search(r'\b(reset|clear|erase|forget|delete)\b.*\b(history|conversation|chat|memory)\b', text, re.I))
+                deterministic = not event.attachment_id and deterministic_input(text)
                 if not deterministic and state['usage'].get(f'generation-day:{int(now // 86400)}', 0) >= self.limits.generations_per_day:
                     receipt['reason'] = 'The generation limit has been reached. Please try again tomorrow.'
                     self._notice(state, user, event, receipt['reason'], now)
@@ -214,12 +222,33 @@ class Service:
                     'destination': event.destination, 'assignment': assignment['id'], 'received_at': event.occurred_at,
                     'message_id': event.message_id}
                 state['jobs'][job['id']] = job
-                if deterministic:
+                if event.attachment_id:
+                    job['audio'] = {'attachment_id': event.attachment_id, 'status': 'pending', 'attempts': 0}
+                # Explicit navigation still cancels obsolete work immediately. Other
+                # commands wait behind a voice note just like ordinary text.
+                waiting_for_voice = any(j['user'] == user['id'] and j.get('audio') for j in pending)
+                navigation = text.split(maxsplit=1)[0].lower() in ('/use', '/edit') if text else False
+                if deterministic and (not waiting_for_voice or navigation):
                     job.update(status='running', claim='command', lease=now + self.limits.lease_seconds)
                     answer = self._command(state, user, job, now, prepared)
                     self._complete(state, job, answer, now)
                 return copy.deepcopy(receipt)
             return await self.store.transaction(accept)
+
+    async def handle_command(self, job):
+        """Handle a queued text/transcript in its original turn, including vault links."""
+        async with self.gates[job['user']]:
+            now = self.clock()
+            current = check_job(await self.snapshot(), job['id'], job['claim'], now)
+            if not deterministic_input(current['question']):
+                return False
+            prepared = self._prepare_step('issue_vault_link', job['id'], f'{job["id"]}:0', current['focus'], now) if (chat_command(current['question']) or '').lower() == '/vault' else None
+            def complete(state):
+                current = check_job(state, job['id'], job['claim'], now)
+                answer = self._command(state, state['users'][current['user']], current, now, prepared)
+                self._complete(state, current, answer, now)
+            await self.store.transaction(complete)
+            return True
 
     async def claim_read_receipt(self, event_id):
         def claim(state):
@@ -285,6 +314,7 @@ class Service:
                         'Add or update its knowledge in a private vault\n'
                         'Ask it questions about those notes\n'
                         'Share it with a friend\n\n'
+                        'You can send me a voice note, too.\n\n'
                         'What would you like to make? You can also ask me about slash commands for shortcuts.')
             if (command == '/commands' and len(parts) == 1) or (command == '/help' and parts[1:] == ['commands']):
                 return ('Here are your shortcuts 🐿️\n\n'
@@ -443,7 +473,8 @@ class Service:
             state['capabilities'][cap_id]['outbox'] = job['id']
         conversation = f'{job["user"]}:builder' if job['mode'] == 'builder' else f'{job["user"]}:project:{job["selected"]}'
         history = state['conversations'].setdefault(conversation, [])
-        history.append({'role': 'user', 'content': job['question'], 'created': now})
+        if job['question']:
+            history.append({'role': 'user', 'content': job['question'], 'created': now})
         messages = split_messages(text)
         history.extend({'role': 'assistant', 'content': part + ('\n[vault link issued]' if caps and index == len(messages) - 1 else ''),
                         'created': now, 'outbox': job['id'], 'part': index} for index, part in enumerate(messages))

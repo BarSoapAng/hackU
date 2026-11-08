@@ -38,6 +38,7 @@ class Inbound:
     space_id: str
     agent_id: str
     message_id: str
+    attachment_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -98,7 +99,7 @@ def verify_event(
     raw: bytes, headers: Mapping[str, str], secret: str, now: float | None = None,
     *, project_id: str, api_version: str = "2026-07-01",
 ) -> Inbound | None:
-    """Return supported direct inbound text, or None for verified unsupported events.
+    """Return direct inbound text/voice, or None for verified unsupported events.
 
     Registration and assignment eligibility remain the transaction layer's job.
     Do not use a delivery timestamp as evidence of post-assignment receipt.
@@ -129,10 +130,17 @@ def verify_event(
                 or set(space["participantIds"]) != {sender["id"], receiver["id"]}):
             return None
         content = message["content"]
-        if content.get("type") != "text":
-            return None  # Attachments are a later, explicitly gated extension.
-        text = content["text"]
-        if not isinstance(text, str) or not text.strip():
+        attachment_id = None
+        if content.get("type") == "voice":
+            attachment_id = content["attachmentId"]
+            if not isinstance(attachment_id, str) or not re.fullmatch(r"pho_att_[0-7][0-9a-hjkmnp-tv-z]{25}", attachment_id):
+                raise WebhookError("Invalid voice attachment identifier.")
+            text = ""
+        elif content.get("type") == "text":
+            text = content["text"]
+            if not isinstance(text, str) or not text.strip():
+                return None
+        else:
             return None
         if not all(isinstance(item, str) and item for item in
                    (event["id"], message["id"], space["id"], receiver["id"])):
@@ -143,7 +151,7 @@ def verify_event(
             return None  # Email iMessage identities are unsupported by V1.
         return Inbound(event["id"], phone, destination, text,
                        _timestamp(message["timestamps"]["receivedAt"]),
-                       space["id"], receiver["id"], message["id"])
+                       space["id"], receiver["id"], message["id"], attachment_id)
     except (KeyError, TypeError, ValueError, AttributeError) as error:
         if isinstance(error, WebhookError):
             raise
@@ -275,6 +283,39 @@ class PhotonClient:
             return SendResult("unknown")
         self._check(response)
         return self._result(response)
+
+    async def download_audio(self, attachment_id, path):
+        """Read authenticated metadata and bounded bytes; never follow provider URLs."""
+        from app.voice import VoiceError
+        endpoint = f"/attachments/{quote(attachment_id, safe='')}"
+        async with asyncio.timeout(15):
+            response = await self._request("GET", endpoint)
+            self._check(response)
+            try:
+                metadata = response.json()
+                size, content_type = metadata['sizeBytes'], metadata['contentType']
+                if (metadata['id'] != attachment_id or metadata['projectId'] != self.project_id
+                        or type(size) is not int or size <= 0 or not isinstance(content_type, str)
+                        or not content_type.lower().startswith('audio/')):
+                    raise ValueError()
+            except (KeyError, ValueError, TypeError):
+                raise VoiceError('unreadable') from None
+            if size > 10 * 1024 * 1024:
+                raise VoiceError('oversized')
+            async with self.client.stream('GET', self.base + endpoint + '/content',
+                    headers={**self.headers, 'Accept-Encoding': 'identity'}, timeout=10,
+                    follow_redirects=False) as response:
+                self._check(response)
+                count = 0
+                with path.open('wb') as audio:
+                    async for chunk in response.aiter_bytes(65536):
+                        count += len(chunk)
+                        if count > 10 * 1024 * 1024:
+                            raise VoiceError('oversized')
+                        audio.write(chunk)
+                if count != size:
+                    raise VoiceError('unreadable')
+            return {'content_type': content_type, 'size_bytes': size}
 
     async def _assignment_rows(self) -> list[dict]:
         rows, page, seen = [], None, set()
