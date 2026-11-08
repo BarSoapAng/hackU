@@ -24,7 +24,7 @@
 </head>
 <body>
 <main>
-  <header><h1>Sprout notes 🐿️</h1><p class="muted">Add notes here and your Sprout can use them once they’re ready.</p></header>
+  <header><h1>Sprout notes</h1><p class="muted">Add notes here and your Sprout can use them once they’re ready.</p></header>
   <p id="message" role="status" aria-live="polite">Opening your Sprout…</p>
   <div id="workspace" class="layout hidden">
     <aside aria-label="Notes">
@@ -53,7 +53,7 @@
   async function api(path, options = {}) {
     const response = await fetch('/api/notes' + path, {
       ...options, cache: 'no-store', credentials: 'omit', redirect: 'error',
-      headers: {'Authorization': 'Bearer ' + token, ...(options.headers || {})}
+      headers: {'Authorization': 'Bearer ' + token, 'Accept': 'application/json', 'ngrok-skip-browser-warning': '1', ...(options.headers || {})}
     });
     if (response.status === 401) {
       token = ''; byId('workspace').classList.add('hidden');
@@ -63,7 +63,8 @@
       const body = await response.json().catch(() => ({}));
       throw new Error(typeof body.detail === 'string' ? body.detail : 'The request could not be completed.');
     }
-    return response.status === 204 ? null : response.json();
+    if (response.status === 204) return null;
+    return response.json().catch(() => { throw new Error('The server returned an unexpected response. Please try again shortly.'); });
   }
   function json(method, body) { return {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}; }
   function canLeave() { return !dirty || confirm('Discard your unsaved changes?'); }
