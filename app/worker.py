@@ -122,7 +122,7 @@ class Worker:
             ('list_projects', 'List the user’s Sprouts and codes. Clarify ambiguous names.', {}),
             ('select_project', 'Select an owned Sprout by its exact public code.', {'code': {'type': 'string'}}),
             ('update_instructions', 'Update instructions for the selected Sprout, including personality and single-message or multi-message reply style.', {'instructions': {'type': 'string'}}),
-            ('set_reactions', 'Enable or disable automatic emoji reactions for the selected Sprout.', {'enabled': {'type': 'boolean'}}),
+            ('set_reactions', 'Enable or disable automatic message reactions for the selected Sprout.', {'enabled': {'type': 'boolean'}}),
             ('issue_vault_link', 'Issue a one-hour link to edit the selected Sprout’s notes.', {}),
         ]:
             tools.append({'type': 'function', 'function': {'name': name, 'description': description,
@@ -168,18 +168,17 @@ class Worker:
                 return
             focus = state['projects'].get(current['focus'])
             messages = [{'role': 'system', 'content':
-                'You are Hypha, a friendly little squirrel who helps people grow iMessage Sprouts from their notes. '
-                'Be warm, curious, concise, and lightly playful. An occasional 🐿️ or small squirrel joke is welcome; never force it. '
+                'You are Hypha, a friendly, helpful guide who helps people grow iMessage Sprouts from their notes. '
+                'Sound like a real person texting: warm, casual, concise, and confident, with a little personality. Match the user’s conversational energy and wording without copying mistakes or becoming hard to understand. '
                 'Always call user-created projects "Sprouts" and files "notes". A Sprout includes its notes; never mention projects, agents, files, or vaults to users. Speak naturally, without backend jargon or mode announcements. '
                 'Use only the provided tools. Never claim an operation or routing change succeeded without a tool result. '
                 'Past service errors do not apply to this request. Do not claim model limits, tool limits, or outages; the server reports those. '
                 'Replies are sent through Photon as plain text; Markdown is not rendered. Use short paragraphs or • bullets. '
                 'Do not use Markdown headings, emphasis, backticks, code fences, tables, or Markdown links; write URLs directly. '
-                'You can send one, two, or three separate texts in a reply. Use a short sequence when it feels natural; do not pad simple replies. '
+                'You can send one, two, or three separate texts in a reply. Keep a quick answer to one text, but prefer two or three short texts over one large block whenever the reply has multiple thoughts or more than a few sentences. Do not pad simple replies. '
                 'To start another text, put <next_message> on its own line. This is an internal separator, never part of the user-facing text. '
                 'For a Sprout\'s messaging style, save preferences such as "reply in one message" or "use up to three short texts when natural" '
                 'in its instructions with update_instructions, preserving its other preferences. '
-                'For automatic emoji reactions, use set_reactions rather than editing instructions. '
                 'For greetings and help, introduce your purpose and give a short basic list: grow a Sprout, customize its personality, '
                 'add notes, ask questions, and share with friends. Offer to explain slash commands, but only list them when explicitly asked. '
                 'When asked for commands, put each command on its own line without bullets, numbering, or backticks. '
@@ -221,9 +220,9 @@ class Worker:
                 has_notes = any(file['project'] == project['id'] for file in state['files'].values())
                 await self.service.complete(job['id'], job['claim'],
                     f'Hi, I’m {project["name"]}! ' + (
-                        'My notes aren’t ready to answer from yet. My owner can check on them, and then we can get chatting. 👋'
+                        'My notes aren’t ready to answer from yet. My owner can check on them, and then we can get chatting.'
                         if has_notes else 'I’m still waiting for my first notes, so I don’t know that one yet. '
-                        'Once my owner adds them, we can get chatting. 👋'))
+                        'Once my owner adds them, we can get chatting.'))
                 return
             query_tokens = token_count(current['question'])
             if not current['question'].strip() or query_tokens > 8000:

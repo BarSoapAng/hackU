@@ -11,13 +11,20 @@ def reply(env, state, operation):
     return env.service.keys.decrypt(state['outbox'][operation]['payload'], 'outbox:' + operation)['text']
 
 
+def reply_parts(env, state, operation):
+    payload = env.service.keys.decrypt(state['outbox'][operation]['payload'], 'outbox:' + operation)
+    return [payload['text'], *payload['remaining']]
+
+
 @pytest.mark.parametrize('message', ['hi', 'hiii!', 'hello', 'help', '/help', 'what can you do?'])
 def test_greetings_and_help_explain_capabilities_without_dumping_commands(message):
     async def scenario():
         env = await environment()
         await env.service.admit(inbound(env, 'welcome', message))
         state = await env.service.snapshot()
-        body = reply(env, state, 'welcome')
+        parts = reply_parts(env, state, 'welcome')
+        body = '\n'.join(parts)
+        assert len(parts) == 3
         assert 'Hypha' in body and 'Grow a Sprout' in body and 'Share your Sprout with a friend' in body
         assert 'ask me about slash commands' in body
         assert not re.search(r'/[a-z]+', body)

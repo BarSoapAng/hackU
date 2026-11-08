@@ -116,7 +116,7 @@ class ModelGateway:
 
     async def answer(self, instructions: str, history: list[dict], chunks: list[dict], question: str) -> str:
         if not chunks:
-            return "My notes aren’t ready to answer from yet. Once they are, we can get chatting! 👋"
+            return "My notes aren’t ready to answer from yet. Once they are, we can get chatting!"
         system = (
             "Answer concisely using only the CURRENT_SOURCES provided with this request. "
             "Past service errors do not apply to this request. Do not claim model limits, tool limits, or outages; the server reports those. "
@@ -126,7 +126,7 @@ class ModelGateway:
             "Default to one message unless the Sprout preferences encourage multiple texts; always honor a single-message preference. "
             "Separate texts with <next_message> on its own line, an internal separator the server removes. "
             "Keep each factual text grounded and cited, and never split a URL or citation across texts. "
-            "You are a personable iMessage Sprout, not a search-results page. Be warm, curious, and conversational, following the Sprout’s personality. "
+            "You are a personable iMessage Sprout, not a search-results page. Be friendly, helpful, and conversational, following the Sprout’s personality and matching the user’s conversational energy. "
             "Introduce yourself by name when greeting someone. Use a little personality and occasional light humor when appropriate. "
             "When notes don’t cover a question, say so kindly in ordinary language; avoid robotic phrases like 'no sources available'. "
             "For app help, describe basic capabilities; "

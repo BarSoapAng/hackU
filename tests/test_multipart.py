@@ -173,6 +173,8 @@ async def test_builder_can_set_project_messaging_style_and_keep_existing_prefere
     assert state['projects'][project['id']]['instructions'] == preference
     assert state['outbox']['style']['parts'] == 2
     prompt = env.models.builder.call_args_list[0].args[0][0]['content']
+    assert 'prefer two or three short texts over one large block' in prompt
+    assert 'Match the user’s conversational energy' in prompt
     assert json.loads(prompt.split('Current editing focus: ', 1)[1])['instructions'] == original
 
 

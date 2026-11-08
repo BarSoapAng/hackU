@@ -306,19 +306,19 @@ class Service:
             if command == '/help' and len(parts) == 1:
                 if user['mode'] == 'customer' and is_greeting(job['question']):
                     project = available(state, user['selected'])
-                    return (f'Hi, I’m {project["name"]}! Nice to meet you. 👋\n\n'
-                            'I’m here to help with the notes my owner shares with me. What are you curious about?\n\n'
+                    return (f'Hi, I’m {project["name"]}! Nice to meet you.<next_message>'
+                            'I’m here to help with the notes my owner shares with me. What are you curious about?<next_message>'
                             'Say “help” if you want to learn about growing or sharing Sprouts of your own.')
-                return ('Hey! I’m Hypha 🐿️ I help you grow little iMessage Sprouts from your notes.\n\n'
+                return ('Hey, I’m Hypha. I help you grow iMessage Sprouts from your notes.<next_message>'
                         'Here’s what we can do together:\n'
                         'Grow a Sprout and give it a personality\n'
                         'Add or update its notes\n'
                         'Ask your Sprout questions about those notes\n'
-                        'Share your Sprout with a friend\n\n'
-                        'You can send me a voice note, too.\n\n'
+                        'Share your Sprout with a friend<next_message>'
+                        'You can send me a voice note, too.\n'
                         'What would you like to make? You can also ask me about slash commands for shortcuts.')
             if (command == '/commands' and len(parts) == 1) or (command == '/help' and parts[1:] == ['commands']):
-                return ('Here are your shortcuts 🐿️\n\n'
+                return ('Here are your shortcuts:\n\n'
                         '/help — what I can help with\n'
                         '/commands — these shortcuts\n'
                         '/sprouts — your Sprouts and their codes\n'

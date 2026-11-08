@@ -134,7 +134,8 @@ async def test_spoken_commands_share_original_turn(monkeypatch, spoken):
     state = await env.service.snapshot()
     assert len(state['jobs']) == 2 and state['jobs']['voice']['status'] == 'completed'
     assert not env.models.builder.called
-    body = env.service.keys.decrypt(state['outbox']['voice']['payload'], 'outbox:voice')['text']
+    payload = env.service.keys.decrypt(state['outbox']['voice']['payload'], 'outbox:voice')
+    body = '\n'.join([payload['text'], *payload['remaining']])
     assert ('You can send me a voice note, too.' if spoken == 'help' else '/notes#') in body
 
 
