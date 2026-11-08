@@ -74,10 +74,11 @@ and live capacity. `LIMIT_DEDUP_DAYS` can be increased and must be at least 30.
 
 ## Runtime and deployment
 
-Follow [the deployment runbook](docs/deployment.md) at the explicitly requested
-live milestone. Building, publishing, application startup, Photon enrollment,
-and provider smoke tests are separate operator actions. The supplied Dockerfile
-and Compose configuration have not been built or started by this implementation.
+The demo backend is hosted on the existing Brev server using
+[the Brev deployment](deploy/brev/README.md). The container and ngrok system
+service run independently of the laptop. See [the deployment runbook](docs/deployment.md)
+for current state and recovery. Building, publishing, application startup,
+Photon enrollment, and provider smoke tests are separate operator actions.
 
 The backend must run as **one process with no overlapping replacement**. Its
 per-user dispatch gates serialize navigation against the bounded Photon send.

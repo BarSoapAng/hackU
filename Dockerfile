@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -r
 COPY requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock && python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 COPY app ./app
-RUN useradd --uid 10001 --create-home appuser
+RUN useradd --uid 10001 --create-home appuser && chmod -R a+rX /app/app
 USER appuser
 EXPOSE 8001
 CMD ["uvicorn", "app.main:production_app", "--factory", "--host", "0.0.0.0", "--port", "8001", "--workers", "1", "--no-access-log"]

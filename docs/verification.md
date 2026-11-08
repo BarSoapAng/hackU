@@ -11,10 +11,19 @@ This report distinguishes mocked behavior from deployed behavior.
 | Live integration and two-person journey | Provider/database checks and the owner’s real Sprout/notes-link exchange passed; note upload/Q&A and second-participant checks remain pending |
 | Voice notes | Enabled in the local demo on 2026-11-08 after real iMessage CAF download/decode/transcription and a Photon-confirmed text reply. Two-minute speech and concurrent builder/GPU checks passed; live project citations/multipart checks remain pending. See [speech rollout](../deploy/speech/README.md) |
 | Extensions after the live journey | Deferred as required by the plan: Sprout rename/deletion, conversational note tools, general Photon attachment imports, explicit reindex endpoint, broader natural-language navigation |
-| Deployment | Local Windows backend and ngrok HTTPS tunnel running; Photon webhook enabled; production deployment remains pending |
+| Deployment | Backend and ngrok now hosted on the existing Brev server; laptop backend stopped; cloud preflight and public endpoint checks passed; fresh hosted user journey and broader production gates remain pending |
 
 ## Evidence
 
+- On 2026-11-08, the authorized Brev migration preserved the existing database,
+  public hostname, Photon webhook, and encryption keys. One cloud backend runs
+  with direct loopback access to the GPU services; the laptop backend and ngrok
+  endpoint were stopped first. Docker/ngrok boot enablement and container restart
+  policies were verified. Authenticated database read, Photon assignment lookup,
+  Nemotron model discovery, speech readiness, and encryption-key validation passed.
+  Public health/notes checks and unauthenticated API/webhook denial passed after
+  fixing packaged static-file permissions for the non-root container user. No
+  user messages were sent by these checks; the hosted user journey is still pending.
 - At the user's explicit live-setup request on 2026-11-07 (America/Winnipeg),
   the configured database passed authenticated read/write, stale-CAS rejection,
   anonymous/unrelated read/write denial, and private SQL denial (HTTP 403).
@@ -30,9 +39,9 @@ This report distinguishes mocked behavior from deployed behavior.
   created the Demo Sprout, and issued a notes-editing capability. Hypha completed
   in three generation requests and one worker attempt. Photon confirmed the
   reply delivered after one submission; no duplicate Sprout or reply was created.
-- The backend runs as one Windows process, with a background ngrok tunnel and
-  the existing WSL/Brev inference forward. Keep the laptop awake for this local
-  demo. Two targeted tests cover the new `.env` runner's quoting and secret
+- Before the hosted migration, the backend ran as one Windows process with a
+  background ngrok tunnel and the WSL/Brev inference forward, requiring the
+  laptop to stay awake. Two targeted tests cover the `.env` runner's quoting and secret
   preservation; no environment secrets were committed.
 - Final offline checks: **164 Python tests and 7 subtests passed**, **11 TypeScript
   policy tests passed**, and TypeScript `--noEmit` checking passed. The Python

@@ -1,6 +1,45 @@
 # Deployment and recovery runbook
 
-## Current local setup
+## Current hosted setup
+
+On 2026-11-08, the user authorized migration and explicitly approved transferring
+the existing credentials to `secure-amethyst-ferret`. The backend now runs in
+`~/hypha` on that Brev server using
+[`deploy/brev/compose.yaml`](../deploy/brev/compose.yaml). The laptop backend and
+its ngrok process were stopped before the cloud worker started. The original
+public hostname, Photon webhook, database, and encryption keys were preserved.
+
+The backend binds to `127.0.0.1:8001` using Linux host networking. It reaches
+Nemotron directly on port 8000 and speech directly on port 8002. The ngrok
+system service supplies HTTPS; Docker and ngrok are enabled at boot, and all
+three application/model containers use `restart: unless-stopped`. No laptop
+or SSH forward is required. The Brev VM must remain running and funded.
+
+Server `.env` and `ngrok.yml` files have mode 600 in a mode-700 directory.
+The pre-migration server directory was backed up under `~/hypha-backups`.
+Secrets and ngrok configuration are excluded from the Docker build context.
+Use the [Brev operations guide](../deploy/brev/README.md) for updates and rollback;
+always stop the old backend before starting a replacement.
+
+Deployment checks passed: container dependencies/FFmpeg/tokenizer/temp storage,
+exact Compose environment parsing, encryption-key round trip, authenticated
+database read, Photon assignment lookup, Nemotron model discovery, and speech
+readiness. Public `/healthz` and `/notes` passed; unsigned webhooks and notes API
+requests without credentials returned 401. The internal dashboard API returned
+404. A container file-permission issue found during the public notes check was
+fixed by making packaged application files readable by the non-root app user.
+
+A fresh real text/voice/notes journey with the laptop off remains the user's
+acceptance check. No messages were sent by the migration checks. Database schema
+and broader production gates in [verification status](verification.md) remain.
+Docker restarts crashed processes, but a failed worker can leave Uvicorn alive
+with `/healthz` returning 503; automatic recovery from that condition still needs
+a health monitor or watchdog.
+
+## Previous local setup (rollback reference)
+
+The following describes the earlier laptop deployment, not the active host.
+Do not start it while the cloud backend is running.
 
 The user authorized live setup on 2026-11-07 (America/Winnipeg). Database and
 model probes passed, and the owner’s real Sprout/notes-link exchange
