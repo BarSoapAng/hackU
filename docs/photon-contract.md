@@ -32,7 +32,7 @@ Operator command, only when participant enrollment is requested:
 python -m tools.enroll +14155550123 --operation-id demo-participant-2-enrollment-1
 ```
 
-Set `PHOTON_PROJECT_ID` and `PHOTON_API_KEY` in the environment. Preserve the operation ID for retries of that enrollment. The command reports the assignment and destination and does not send messages. The application must refresh/persist mappings after enrollment. Assignment creation does not establish reply eligibility; the participant must subsequently text that returned destination.
+Set `PHOTON_PROJECT_ID` and `PHOTON_API_KEY` in the environment. Preserve the operation ID for retries of that enrollment. The command reports the assignment and destination and does not send messages. The application persists mappings at startup and refreshes them every 60 seconds; a refresh outage preserves the last known mapping. Preassign both demo participants before startup. If enrolling while the service runs, wait for a successful refresh before the participant texts; a message rejected before refresh stays rejected, so send a new message. Assignment creation does not establish reply eligibility; the participant must subsequently text that returned destination. Dispatch rechecks the stored assignment ID, destination, and creation time against the original inbound receipt.
 
 ## Outbound submission and reconciliation
 
