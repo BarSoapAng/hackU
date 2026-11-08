@@ -7,12 +7,15 @@ import os
 import re
 import time
 from contextlib import asynccontextmanager
+from datetime import date, datetime, timedelta, timezone
+from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from app.database import DatabaseUnavailable, SpacetimeStore
+from app.dashboard_costs import CostConfigurationError, CostDataError, cost_report, estimate_request, load_config
 
 
 def safe_text(value):
@@ -221,7 +224,7 @@ class DashboardData:
                 'requests': requests, 'usage_recorded': bool(requests)}
 
 
-def create_dashboard_app(store, *, clock=time.time, cache_seconds=2):
+def create_dashboard_app(store, *, clock=time.time, cache_seconds=2, costs_config=None):
     """Separate app factory: no messaging workers, credentials, or write routes."""
     cached = None
     cached_at = 0
@@ -279,6 +282,39 @@ def create_dashboard_app(store, *, clock=time.time, cache_seconds=2):
                 cached, cached_at = DashboardData(state, now), now
             return cached
 
+    def pricing():
+        return costs_config() if callable(costs_config) else costs_config
+
+    @app.get('/api/internal/costs')
+    async def costs(start: date | None = None, end: date | None = None,
+                    account_id: str | None = Query(None, max_length=256),
+                    project_id: str | None = Query(None, max_length=256),
+                    provider: Literal['openai', 'nvidia', 'spacetimedb'] | None = None):
+        current = await data()
+        if account_id is not None:
+            current.account(account_id)
+        if project_id is not None:
+            if account_id is None:
+                raise HTTPException(422, 'Select an account before filtering by project.')
+            current.project(account_id, project_id)
+        today = datetime.fromtimestamp(current.now, timezone.utc).date()
+        end = end or today
+        start = start or end - timedelta(days=6)
+        if start > end or (end - start).days >= 366 or end > today:
+            raise HTTPException(422, 'Choose a date range of up to 366 days ending today or earlier (UTC).')
+        lower = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc).timestamp()
+        upper = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc).timestamp()
+        try:
+            result = cost_report(current.state, pricing(), lower, upper, account_id=account_id,
+                                 project_id=project_id, provider=provider, now=current.now)
+        except CostConfigurationError:
+            raise HTTPException(503, 'Cost configuration is unavailable. Check the local costs file.') from None
+        except CostDataError:
+            raise HTTPException(503, 'Recorded cost data is unavailable. Try refreshing.') from None
+        for row in [*result['accounts'], *result['projects']]:
+            row['label'] = safe_text(row['label'])
+        return result
+
     @app.get('/api/internal/overview')
     async def overview():
         current = await data()
@@ -333,7 +369,23 @@ def create_dashboard_app(store, *, clock=time.time, cache_seconds=2):
                 if current.job_conversation(job) == conversation_id and job.get('created', 0) > current.now - 30 * 86400
                 and (turn_id is None or job['id'] == turn_id)]
         jobs.sort(key=lambda job: (job['created'], job['id']), reverse=True)
-        return {'items': [current.turn(job) for job in jobs[offset:offset + limit]],
+        items = [current.turn(job) for job in jobs[offset:offset + limit]]
+        try:
+            config = pricing()
+        except CostConfigurationError:
+            config = None
+            configuration_error = True
+        else:
+            configuration_error = False
+        for turn in items:
+            for request in turn['requests']:
+                try:
+                    if configuration_error:
+                        raise CostConfigurationError()
+                    request['cost'] = estimate_request(request, config)
+                except (CostConfigurationError, CostDataError):
+                    request['cost'] = {'estimated_usd': None, 'basis': 'configuration_error'}
+        return {'items': items,
                 'total': len(jobs), 'offset': offset, 'limit': limit, 'coverage': {'trace_days': 7, 'usage_days': 30}}
 
     return app
@@ -341,4 +393,5 @@ def create_dashboard_app(store, *, clock=time.time, cache_seconds=2):
 
 def local_app():
     return create_dashboard_app(SpacetimeStore(os.environ['DATABASE_URL'], os.environ['DATABASE_NAME'],
-                                              os.environ['DATABASE_TOKEN']))
+                                              os.environ['DATABASE_TOKEN']),
+                                costs_config=lambda: load_config(os.environ.get('DASHBOARD_COSTS_FILE', '.local/dashboard-costs.json')))

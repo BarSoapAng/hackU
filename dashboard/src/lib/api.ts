@@ -25,6 +25,7 @@ export type ModelRequest = {
   model: string | null; started: number | null; finished: number | null; duration_ms: number | null;
   status: 'pending' | 'received' | 'failed' | 'unknown'; input_tokens: number | null; output_tokens: number | null;
   cached_input_tokens: number | null; total_tokens: number | null; provider_status: string | null; error_type: string | null; http_status: number | null
+  cost?: { estimated_usd: number | null; basis: 'token_estimate' | 'shared_gpu' | 'not_configured' | 'usage_unknown' | 'configuration_error' }
 }
 export type ActivityTurn = {
   id: string; created: number; status: string; attempts: number; generations: number; trace_available: boolean;
@@ -32,6 +33,22 @@ export type ActivityTurn = {
   requests: ModelRequest[]; usage_recorded: boolean
 }
 export type Activity = Page<ActivityTurn> & { coverage: { trace_days: number; usage_days: number } }
+export type CostBreakdown = {
+  id: string; label: string; estimated_usd: number | null; known_estimated_usd: number;
+  providers: Record<string, number>; request_count: number; unpriced_requests: number;
+  account_id?: string | null; deleted?: boolean
+}
+export type Costs = {
+  currency: 'USD'; period: { start: number; end: number };
+  scope: { account_id: string | null; project_id: string | null; provider: string | null };
+  estimated_usd: number | null; known_estimated_usd: number; billed_usd: number | null; known_billed_usd: number;
+  providers: { provider: string; estimated_usd: number | null; known_estimated_usd: number; billed_usd: number | null;
+    request_count: number; unpriced_requests: number; unmetered_jobs: number; configuration_missing: boolean }[];
+  accounts: CostBreakdown[]; projects: CostBreakdown[]; shared_overhead_usd: number; unassigned_project_usd: number;
+  coverage: { request_count: number; unpriced_requests: number; unmetered_jobs: number; usage_days: number;
+    partial: boolean; history_partial: boolean; earliest_request_at: number | null };
+  allocation: { gpu_method: string; database_method: string; snapshot_bytes: number; project_bytes: Record<string, number> }
+}
 
 export function accountPath(id: string) {
   return `/api/internal/accounts/${encodeURIComponent(id)}`

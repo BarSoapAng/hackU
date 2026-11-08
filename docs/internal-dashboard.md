@@ -66,6 +66,51 @@ Interrupted requests also have unknown usage. Missing historical data is labeled
 “Not recorded,” never inferred as zero. Metadata follows job retention (normally
 30 days); transcript and trace retention remain unchanged.
 
+## Cost configuration
+
+Cost reporting reads a local JSON file rather than calling billing APIs. Configure
+your own rates and infrastructure amounts; the dashboard does not invent prices
+or infer that a missing charge was free. Amounts use USD. From the repository root:
+
+```bash
+mkdir -p .local
+cp dashboard-costs.example.json .local/dashboard-costs.json
+```
+
+Edit that ignored file in your editor. `DASHBOARD_COSTS_FILE` can select another
+path. The dashboard reads configuration on refresh. Keep the copied example's
+empty arrays until you have values to enter.
+
+| Collection | Fields | Meaning |
+| --- | --- | --- |
+| `rates` | `model`, `effective_at`, `input_per_million`, `output_per_million`, `cached_input_per_million` | OpenAI USD per million tokens. Dates select the rate in force at request time. A null rate remains unknown. Include answer and embedding models separately. |
+| `infrastructure` | `provider`, `start`, `end`, `amount_usd` | Estimated NVIDIA/Brev or SpacetimeDB cost for an interval. Provider is `nvidia` or `spacetimedb`. |
+| `infrastructure` (GPU alternative) | `provider: "nvidia"`, `start`, `end`, `hourly_rate_usd` | A running GPU interval, including idle time. Use an hourly rate or an interval amount, not both. |
+| `reported_bills` | `provider`, `start`, `end`, `amount_usd` | Manually entered provider billing totals, displayed separately from estimates. |
+
+Configuration timestamps must use UTC (`Z` or `+00:00`), for example
+`2026-11-08T00:00:00Z`. Intervals include their start and exclude their end.
+Dashboard date filters include both selected calendar dates in UTC. Reported
+bills are comparable only when their full period matches the selected deployment
+period; they are never added to estimates or relabeled as actual per-user bills.
+
+NVIDIA requests use shared GPU infrastructure costs, not token pricing. Allocation
+uses recorded request windows, counting overlapping time once and splitting that
+time's cost among concurrent requests. Idle or unmeasured time remains shared
+overhead. Allocations cannot exceed the interval's total. SpacetimeDB
+allocation uses each project's current logical storage footprint relative to the
+whole snapshot; this is a current-footprint estimate, not historical metering.
+Unattributed database storage stays in shared overhead.
+Builder requests made before a project is selected remain account-level costs.
+Account totals plus shared overhead reconcile with the deployment estimate;
+project totals also require those account-level, unassigned costs to reconcile.
+
+Unknown usage, missing rates, unmetered old jobs, and dates outside retained
+history make totals incomplete. The known subtotal remains visible separately.
+Cached input tokens are a subset of input tokens, and each provider retry counts
+as a distinct request. Billing inputs, allocations, and estimates are all read only
+in the dashboard.
+
 ## Implementation phases
 
 1. Account/project browsing and transcripts, with local-only API and React UI.
@@ -96,3 +141,16 @@ API tests passed; telemetry, model, retrieval, and worker checks also passed.
 The activity workspace has an optional 15-second live refresh that pauses while
 the tab is hidden. “View activity” focuses and opens the matching turn; “Show all
 turns” returns to the latest activity list.
+
+Phase 3 passed independent code and style/UX reviews. Review fixes count overlapping
+GPU time once, preserve cost filters through account/project drilldowns, and label
+partial shared overhead and unconfigured GPU costs explicitly. Final checks passed:
+96 dashboard/cost backend tests, 17 frontend tests, and TypeScript. The full Python
+suite also passed at the end of phase 2 (283 tests and seven subtests).
+
+```bash
+python -m pytest tests/test_dashboard.py tests/test_dashboard_activity.py tests/test_dashboard_costs.py tests/test_dashboard_cost_api.py -q
+cd dashboard
+npm run typecheck
+npm test
+```

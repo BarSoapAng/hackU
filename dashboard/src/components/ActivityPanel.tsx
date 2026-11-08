@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Activity as ActivityIcon, ArrowDown, ArrowUp, ChevronDown, Wrench } from 'lucide-react'
 import { accountPath, formatTime, useApi, type Activity, type ModelRequest } from '../lib/api'
+import { formatUsd } from '../lib/costs'
 import { Badge, Button, Card, Empty, RequestState, cn } from './ui'
 
 export function ActivityPanel({ accountId, conversationId, refresh, turnId, onClearTurn }: {
@@ -58,5 +59,6 @@ function RequestCard({ request, sequence }: { request: ModelRequest; sequence: n
     {request.status === 'received' && <p className="text-sm leading-relaxed text-muted-foreground">Provider response received. The turn and message statuses show processing and delivery outcomes.</p>}
     {(request.error_type || request.http_status) && <p className="break-words text-sm text-destructive">{request.error_type ?? 'Provider error'}{request.http_status ? ` · HTTP ${request.http_status}` : ''}</p>}
     {request.status === 'unknown' && <p className="text-sm text-muted-foreground">The request outcome could not be confirmed.</p>}
+    {request.cost && <div className="border-t pt-3 text-sm"><p className="font-medium">{request.cost.basis === 'shared_gpu' ? 'Cost basis: shared GPU runtime' : request.cost.estimated_usd !== null ? `Estimated API cost · ${formatUsd(request.cost.estimated_usd)}` : request.cost.basis === 'usage_unknown' ? 'Estimated cost · Usage not recorded' : request.cost.basis === 'configuration_error' ? 'Estimated cost · Configuration needs attention' : 'Estimated cost · Rate not configured'}</p>{request.cost.basis === 'shared_gpu' && <p className="mt-1 leading-relaxed text-muted-foreground">See configured runtime and coverage in Costs.</p>}</div>}
   </div>
 }

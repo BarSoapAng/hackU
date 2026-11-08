@@ -1,25 +1,29 @@
 import { Fragment, useState } from 'react'
-import { ArrowLeft, ArrowRight, ArrowUpRight, ChevronDown, ChevronRight, FolderOpen, LayoutDashboard, Leaf, MessageSquare, RefreshCw, ShieldCheck, UserRound, Users } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ArrowUpRight, ChevronDown, ChevronRight, CircleDollarSign, FolderOpen, LayoutDashboard, Leaf, MessageSquare, RefreshCw, ShieldCheck, UserRound, Users } from 'lucide-react'
 import { AccountSwitcher } from './components/AccountSwitcher'
 import { ConversationWorkspace } from './components/ConversationWorkspace'
+import { CostsPanel } from './components/CostsPanel'
 import { Badge, Button, Card, Empty, Pagination, RequestState, SearchInput, cn } from './components/ui'
 import { accountPath, formatTime, useApi, type Account, type Overview, type Page, type Project, type ProjectDetail, type User } from './lib/api'
 
 export default function App() {
   const [selection, setSelection] = useState<{ accountId: string; projectId: string | null; conversationId: string | null } | null>(null)
   const [refresh, setRefresh] = useState(0)
+  const [view, setView] = useState<'workspace' | 'costs'>('workspace')
   function selectAccount(accountId: string, projectId: string | null = null) { setSelection({ accountId, projectId, conversationId: null }) }
+  function overview() { setSelection(null); setView('workspace') }
   return <>
     <a href="#main" className="sr-only z-50 rounded-lg bg-primary p-3 text-primary-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Skip to content</a>
     <header className="border-b bg-card">
       <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-8">
-        <button onClick={() => setSelection(null)} className="flex items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Acorn dashboard overview"><span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Leaf className="size-6" aria-hidden="true" /></span><span><span className="block text-xl font-semibold tracking-tight">acorn</span><span className="block text-sm text-muted-foreground">Internal workspace</span></span></button>
+        <button onClick={overview} className="flex items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Acorn dashboard overview"><span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Leaf className="size-6" aria-hidden="true" /></span><span><span className="block text-xl font-semibold tracking-tight">acorn</span><span className="block text-sm text-muted-foreground">Internal workspace</span></span></button>
         <div className="flex flex-wrap items-center gap-3"><Badge className="hidden sm:inline-flex"><ShieldCheck className="size-4" aria-hidden="true" />Local · Read only</Badge><AccountSwitcher accountId={selection?.accountId ?? null} onSelect={selectAccount} /></div>
       </div>
     </header>
     <main id="main" className="mx-auto max-w-screen-2xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
-      {selection ? <>
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-primary/20 bg-accent px-5 py-4"><div className="flex items-start gap-3"><UserRound className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" /><div><p className="font-medium">Viewing as <span className="break-all">{selection.accountId}</span></p><p className="mt-1 text-sm text-muted-foreground">Read-only view of this account’s workspace</p></div></div><Button variant="outline" onClick={() => setSelection(null)}><ArrowLeft />Back to overview</Button></div>
+      {selection && <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-primary/20 bg-accent px-5 py-4"><div className="flex items-start gap-3"><UserRound className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" /><div><p className="font-medium">Viewing as <span className="break-all">{selection.accountId}</span></p><p className="mt-1 text-sm text-muted-foreground">Read-only view of this account’s workspace</p></div></div><Button variant="outline" onClick={overview}><ArrowLeft />Back to overview</Button></div>}
+      <nav aria-label="Dashboard sections" className="flex flex-wrap gap-2"><Button variant={view === 'workspace' ? 'default' : 'ghost'} aria-current={view === 'workspace' ? 'page' : undefined} onClick={() => setView('workspace')}><LayoutDashboard />{selection ? 'Workspace' : 'Overview'}</Button><Button variant={view === 'costs' ? 'default' : 'ghost'} aria-current={view === 'costs' ? 'page' : undefined} onClick={() => setView('costs')}><CircleDollarSign />Costs</Button></nav>
+      {view === 'costs' ? <CostsPanel accountId={selection?.accountId} projectId={selection?.projectId} refresh={refresh} onScope={selectAccount} /> : selection ? <>
         <AccountView key={selection.accountId} accountId={selection.accountId} projectId={selection.projectId} conversationId={selection.conversationId} refresh={refresh} onRefresh={() => setRefresh(value => value + 1)} onProject={projectId => setSelection({ ...selection, projectId, conversationId: null })} onConversation={conversationId => setSelection({ ...selection, conversationId })} onBuilder={conversationId => setSelection({ ...selection, projectId: null, conversationId })} />
       </> : <OverviewView refresh={refresh} onRefresh={() => setRefresh(value => value + 1)} onSelect={selectAccount} />}
     </main>

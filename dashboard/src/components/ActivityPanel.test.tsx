@@ -44,3 +44,16 @@ test('provider response received does not claim that the agent delivered a messa
   expect(screen.getByText('Provider response received. The turn and message statuses show processing and delivery outcomes.')).toBeTruthy()
   expect(screen.getAllByText('0')).toHaveLength(4)
 })
+
+test('shared GPU cost basis does not imply runtime or rate coverage has been configured', async () => {
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(response([turn({
+    usage_recorded: true,
+    requests: [{ id: 'request', sequence: 1, provider: 'nvidia', operation: 'builder', model: 'nemotron-builder', started: 1767225600, finished: null,
+      duration_ms: null, status: 'unknown', input_tokens: null, output_tokens: null, cached_input_tokens: null, total_tokens: null, provider_status: null,
+      error_type: null, http_status: null, cost: { estimated_usd: null, basis: 'shared_gpu' } }],
+  })]))))
+  render(<ActivityPanel accountId="owner" conversationId="thread" refresh={0} />)
+  await screen.findByText('Cost basis: shared GPU runtime')
+  expect(screen.getByText('See configured runtime and coverage in Costs.')).toBeTruthy()
+  expect(screen.queryByText('Included in the shared GPU estimate')).toBeNull()
+})
