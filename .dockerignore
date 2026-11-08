@@ -6,3 +6,7 @@ db/node_modules
 __pycache__
 .pytest_cache
 deploy/nemotron/cache
+ngrok.yml
+deployment.tar.gz
+source.tar.gz
+.install

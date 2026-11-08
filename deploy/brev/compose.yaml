@@ -1,0 +1,17 @@
+name: hypha
+services:
+  backend:
+    build: ../..
+    env_file: ../../.env
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    stop_grace_period: 30s
+    command: [uvicorn, 'app.main:production_app', --factory, --host, '127.0.0.1', --port, '8001', --workers, '1', --no-access-log]
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
