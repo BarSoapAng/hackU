@@ -32,8 +32,8 @@ async def test_jev_policy_and_request(fits, social, meaning, emoji, only):
         return httpx.Response(200, json={'answers': {
             'fits': {'noul': fits}, 'social': {'noul': social}, 'meaning': {'choice': meaning}}})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
-        decision = await JevClient(http, 'synthetic').decide('Thanks https://app/vault#secret',
-            [{'role': 'assistant', 'content': 'https://app/vault#secret'}], {'name': 'Hypha'})
+        decision = await JevClient(http, 'synthetic').decide('Thanks https://app/notes#secret',
+            [{'role': 'assistant', 'content': 'https://app/notes#secret'}], {'name': 'Hypha'})
     assert decision == {'status': 'decided', 'emoji': emoji, 'only': only}
 
 

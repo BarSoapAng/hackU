@@ -6,11 +6,11 @@ This report distinguishes mocked behavior from deployed behavior.
 | Phase | Status |
 | --- | --- |
 | Integration contracts | Implemented; primary contracts recorded, existing Photon and database configuration inspected read-only |
-| First-journey implementation | Implemented: verified ingestion, routing, initial builder tools, encrypted vault capabilities, editor, indexing, project Q&A, budgets, durable jobs/outbox |
+| First-journey implementation | Implemented: verified ingestion, routing, initial Hypha tools, encrypted notes-editing capabilities, editor, indexing, Sprout Q&A, budgets, durable jobs/outbox |
 | First-journey mocked verification | Passing; independent subagents wrote provider, API, journey, authorization, race, and recovery tests |
-| Live integration and two-person journey | Provider/database checks and the owner's real create-project/vault-link exchange passed; file upload/Q&A and second-participant checks remain pending |
+| Live integration and two-person journey | Provider/database checks and the owner’s real Sprout/notes-link exchange passed; note upload/Q&A and second-participant checks remain pending |
 | Voice notes | Implemented behind a disabled flag; offline voice/service tests and reviewer checks pass. FFmpeg decoding with real iMessage audio, NeMo GPU startup/capacity, and the real voice journey remain rollout gates |
-| Extensions after the live journey | Deferred as required by the plan: project rename/deletion, conversational file tools, general Photon attachment imports, explicit reindex endpoint, broader natural-language navigation |
+| Extensions after the live journey | Deferred as required by the plan: Sprout rename/deletion, conversational note tools, general Photon attachment imports, explicit reindex endpoint, broader natural-language navigation |
 | Deployment | Local Windows backend and ngrok HTTPS tunnel running; Photon webhook enabled; production deployment remains pending |
 
 ## Evidence
@@ -22,14 +22,14 @@ This report distinguishes mocked behavior from deployed behavior.
   was performed during setup.
 - Live Nemotron tool calling, an OpenAI `gpt-5.6-luna` response at low reasoning,
   and Haystack document/query embeddings passed with the configured credentials.
-- The local and HTTPS `/healthz` and `/vault` endpoints returned HTTP 200;
-  unsigned webhook requests and unauthenticated vault API requests returned 401.
+- The local and HTTPS `/healthz` and `/notes` endpoints returned HTTP 200;
+  unsigned webhook requests and unauthenticated notes API requests returned 401.
   One Photon destination was created and enabled for `message.received` using
   API version `2026-07-01`. Its signing secret is stored only in ignored `.env`.
 - A real message from the preassigned owner registered their application user,
-  created the Demo project, and issued a vault capability. The builder completed
+  created the Demo Sprout, and issued a notes-editing capability. Hypha completed
   in three generation requests and one worker attempt. Photon confirmed the
-  reply delivered after one submission; no duplicate project or reply was created.
+  reply delivered after one submission; no duplicate Sprout or reply was created.
 - The backend runs as one Windows process, with a background ngrok tunnel and
   the existing WSL/Brev inference forward. Keep the laptop awake for this local
   demo. Two targeted tests cover the new `.env` runner's quoting and secret
@@ -62,13 +62,13 @@ This report distinguishes mocked behavior from deployed behavior.
 The current database is a private snapshot integration scaffold, not the final
 partitioned domain schema. Reducer proposal checks improve defense in depth but
 do not replace the planned domain reducers. Whole-state transfer includes
-unrelated project vectors and cannot establish acceptable maximum-capacity p95.
+unrelated Sprout vectors and cannot establish acceptable maximum-capacity p95.
 The authenticated live read/write/denial gate has passed. Finish partitioning
 and domain reducers before production deployment.
 
 Real inbound/outbound Photon delivery for the second participant, dashboard
 upload followed by Q&A, real model grounding/abstention, maximum
-vault retrieval p95, and deployed crash recovery remain unverified. The live
+notes retrieval p95, and deployed crash recovery remain unverified. The live
 checks in `tools/verify_integrations.py` require `--live` and are not collected
 by the test suite. No model/provider fallback is configured.
 
@@ -77,8 +77,8 @@ unverified. Unknown sends are retained for read-only reconciliation, never
 blindly retried. The initial deployment requires one active process; horizontal
 or overlapping replicas are unsupported.
 
-There is no project-deletion capability before the extension gate. Existing
-checks reject deleted projects if a tombstone is present, but that is not proof
+There is no Sprout-deletion capability before the extension gate. Existing
+checks reject deleted Sprouts if a tombstone is present, but that is not proof
 of a completed deletion workflow. The same distinction applies to attachments
 and manual indexing retries, which are intentionally not exposed yet.
 

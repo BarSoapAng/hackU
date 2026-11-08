@@ -98,7 +98,7 @@ async def test_navigation_after_partial_delivery_cancels_remainder_and_vault_lin
     assert state['outbox'][job['id']]['status'] == 'cancelled'
     assert state['capabilities'][cap['id']]['revoked']
     assert env.photon.send.await_count == 1
-    assert '/vault#' not in env.photon.send.call_args.args[2]
+    assert '/notes#' not in env.photon.send.call_args.args[2]
 
 
 @pytest.mark.asyncio
@@ -118,11 +118,11 @@ async def test_vault_link_is_in_final_text_and_never_in_model_history(trailing, 
         await env.worker.dispatch(job['id'])
         state = await env.service.snapshot()
         assert bool(state['capabilities'][cap['id']].get('delivered')) == (i == len(parts) - 1)
-        assert ('[vault link issued]' in json.dumps(env.service.history(state, job))) == (i == len(parts) - 1)
+        assert ('[notes editing link issued]' in json.dumps(env.service.history(state, job))) == (i == len(parts) - 1)
     texts = [call.args[2] for call in env.photon.send.call_args_list]
     assert len(texts) == len(parts)
-    assert all('/vault#' not in text for text in texts[:-1])
-    assert texts[-1].endswith('/vault#' + token)
+    assert all('/notes#' not in text for text in texts[:-1])
+    assert texts[-1].endswith('/notes#' + token)
     assert token not in json.dumps(env.service.history(state, job))
 
 

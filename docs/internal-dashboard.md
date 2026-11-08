@@ -1,7 +1,7 @@
 # Internal dashboard
 
-The dashboard is a local, read-only development tool. An account owns projects;
-a participant messages a project's agent. The same user can be both. “View as”
+The dashboard is a local, read-only development tool. An account owns Sprouts;
+a participant messages a Sprout. The same user can be both. “View as”
 changes the inspection scope, not the user's identity or messaging state.
 
 ## Local use
@@ -24,18 +24,18 @@ npm run dev
 
 Open `http://127.0.0.1:5173`. These are operator startup instructions; creating
 this dashboard does not start either process. The local API has no worker,
-webhook, agent editing, vault editing, or message sending routes. It is separate
+webhook, Sprout editing, notes editing, or message sending routes. It is separate
 from the public application and must not be exposed through a tunnel or proxy.
 
 ## Browsing
 
-The overview lists registered users, project owners, active projects, and retained
-conversations. Expand a user to inspect projects, or choose “View as” to open
-their account. Accounts with no projects still appear in search and selection.
-Builder conversations live at account level because they may span projects.
-Project conversations are continuous threads per participant/project.
+The overview lists registered users, Sprout owners, active Sprouts, and retained
+conversations. Expand a user to inspect Sprouts, or choose “View as” to open
+their account. Accounts with no Sprouts still appear in search and selection.
+Hypha conversations live at account level because they may span Sprouts.
+Sprout conversations are continuous threads per participant and Sprout.
 
-Account, project, and conversation scope is checked on the backend. Only safe
+Account, Sprout, and conversation scope is checked on the backend. Only safe
 projections reach the browser; raw database snapshots, editing capabilities,
 encrypted payloads, and provider credentials are excluded. Refreshes share a
 short-lived backend snapshot cache. Lists and message pages are bounded.
@@ -45,20 +45,20 @@ chronological order. “Earlier messages” retrieves older pages. The source re
 at most 200 messages per thread within 30 days; detailed job traces expire after
 seven days. Delivery status belongs to each reply, including multipart replies.
 
-## Agent activity and usage
+## Sprout activity and usage
 
 Activity follows the selected account and conversation. Each turn shows tool
 outcomes and provider requests separately: receiving a provider response does not
 mean the response was delivered to the participant. Queued first turns are visible
 before their completed transcript exists. Tool arguments and results use explicit
-field projections; vault-link tools expose only a readiness flag.
+field projections; notes-link tools expose only a readiness flag.
 
 After the messaging backend is next restarted by the operator, request metadata
-is recorded on its existing durable jobs. This includes NVIDIA builder requests,
+is recorded on its existing durable jobs. This includes NVIDIA Hypha requests,
 OpenAI answers, and query/document embeddings. Each actual retry has its own
 record. Records contain scope, model, timing, status, and provider-reported token
 usage, without raw prompts, provider responses, or credentials. Document embedding
-costs belong to the project and do not invent a participant conversation.
+costs belong to the Sprout and do not invent a participant conversation.
 
 Recording the initial request must succeed before a provider is called. A failure
 to finalize telemetry does not retry a paid request; its usage remains unknown.
@@ -98,12 +98,12 @@ NVIDIA requests use shared GPU infrastructure costs, not token pricing. Allocati
 uses recorded request windows, counting overlapping time once and splitting that
 time's cost among concurrent requests. Idle or unmeasured time remains shared
 overhead. Allocations cannot exceed the interval's total. SpacetimeDB
-allocation uses each project's current logical storage footprint relative to the
+allocation uses each Sprout's current logical storage footprint relative to the
 whole snapshot; this is a current-footprint estimate, not historical metering.
 Unattributed database storage stays in shared overhead.
-Builder requests made before a project is selected remain account-level costs.
+Hypha requests made before a Sprout is selected remain account-level costs.
 Account totals plus shared overhead reconcile with the deployment estimate;
-project totals also require those account-level, unassigned costs to reconcile.
+Sprout totals also require those account-level, unassigned costs to reconcile.
 
 Unknown usage, missing rates, unmetered old jobs, and dates outside retained
 history make totals incomplete. The known subtotal remains visible separately.
@@ -113,8 +113,8 @@ in the dashboard.
 
 ## Implementation phases
 
-1. Account/project browsing and transcripts, with local-only API and React UI.
-2. Sanitized agent activity and request-level usage/timing instrumentation.
+1. Account/Sprout browsing and transcripts, with local-only API and React UI.
+2. Sanitized Sprout activity and request-level usage/timing instrumentation.
 3. Dated provider rates, cost estimates, shared overhead, and reconciliation.
 
 Each phase receives a separate code review and style/UX review. Verification uses
@@ -143,7 +143,7 @@ the tab is hidden. “View activity” focuses and opens the matching turn; “S
 turns” returns to the latest activity list.
 
 Phase 3 passed independent code and style/UX reviews. Review fixes count overlapping
-GPU time once, preserve cost filters through account/project drilldowns, and label
+GPU time once, preserve cost filters through account/Sprout drilldowns, and label
 partial shared overhead and unconfigured GPU costs explicitly. Final checks passed:
 96 dashboard/cost backend tests, 17 frontend tests, and TypeScript. The full Python
 suite also passed at the end of phase 2 (283 tests and seven subtests).

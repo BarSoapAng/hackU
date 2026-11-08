@@ -18,7 +18,7 @@ def test_greetings_and_help_explain_capabilities_without_dumping_commands(messag
         await env.service.admit(inbound(env, 'welcome', message))
         state = await env.service.snapshot()
         body = reply(env, state, 'welcome')
-        assert 'Hypha' in body and 'Create an agent' in body and 'Share it with a friend' in body
+        assert 'Hypha' in body and 'Grow a Sprout' in body and 'Share your Sprout with a friend' in body
         assert 'ask me about slash commands' in body
         assert not re.search(r'/[a-z]+', body)
         assert state['jobs']['welcome']['status'] == 'completed'
@@ -59,25 +59,37 @@ def test_edit_switches_modes_and_builder_is_no_longer_a_command():
     asyncio.run(scenario())
 
 
-def test_natural_vault_request_issues_usable_private_url_and_share_stays_public():
+@pytest.mark.parametrize('command', ['/projects', '/vault'])
+def test_legacy_terminology_commands_are_not_supported(command):
+    async def scenario():
+        env = await environment()
+        await env.service.admit(inbound(env, 'legacy', command))
+        state = await env.service.snapshot()
+        assert 'don’t know that shortcut' in reply(env, state, 'legacy')
+        assert not state['jobs']['legacy']['steps']
+        env.models.builder.assert_not_called()
+    asyncio.run(scenario())
+
+
+def test_natural_notes_request_issues_usable_private_url_and_share_stays_public():
     async def scenario():
         env = await environment()
         job, project, _ = await create_project(env)
         await env.service.complete(job['id'], job['claim'], 'Created')
         created = reply(env, await env.service.snapshot(), job['id'])
         assert f'https://vault.example/a/{project["code"]}' in created
-        await env.service.admit(inbound(env, 'vault', 'my vault'))
+        await env.service.admit(inbound(env, 'vault', 'my notes'))
         state = await env.service.snapshot()
         body = plain_text(reply(env, state, 'vault'))
         url = next(line for line in body.splitlines() if line.startswith('https://'))
-        assert url.startswith('https://vault.example/vault#')
+        assert url.startswith('https://vault.example/notes#')
         token = url.split('#', 1)[1]
         cap = env.service.authorize(state, token)
         assert cap['project'] == project['id'] and cap['id'] not in body
-        assert 'Open your vault:' in body
-        await env.service.admit(inbound(env, 'share', 'share my agent'))
+        assert 'Edit your Sprout’s notes:' in body
+        await env.service.admit(inbound(env, 'share', 'share my sprout'))
         shared = reply(env, await env.service.snapshot(), 'share')
         assert f'https://vault.example/a/{project["code"]}' in shared
-        assert token not in shared and '/vault#' not in shared
+        assert token not in shared and '/notes#' not in shared
         env.models.builder.assert_not_called()
     asyncio.run(scenario())

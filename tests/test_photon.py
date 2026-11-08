@@ -175,7 +175,7 @@ class TestTransport(IsolatedAsyncioTestCase):
 
     async def test_send_preserves_plain_text_urls_citations_and_literal_symbols(self):
         text = ('Use /edit ABC123 or /help.\n[my_guide.md > Opening]\n'
-                'https://vault.example/vault#token_with_two_underscores\n'
+                'https://vault.example/notes#token_with_two_underscores\n'
                 'https://example.test/_guide_/a*b*c?q=one_two_three#part\n'
                 'https://example.test/_guide_ https://example.test/path*\n'
                 'Price: $5. 2 * 3 = 6; snake_case_name; C#; #123. Hello 🌍')

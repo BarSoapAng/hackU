@@ -24,7 +24,7 @@ def initialize(state):
 
 
 def redact_links(text):
-    return re.sub(r'https?://[^\s<>]*?/vault#[^\s<>]+', '[vault link omitted]', text)
+    return re.sub(r'https?://[^\s<>]*?/(?:notes|vault)#[^\s<>]+', '[editing link omitted]', text)
 
 
 def is_greeting(text):
@@ -41,11 +41,11 @@ def chat_command(text):
     if query in ('commands', 'slash commands', 'slash command') or re.fullmatch(
             r'(?:what|show|list|tell|explain|help).*\bslash commands?\b.*', query):
         return '/commands'
-    if query in ('vault', 'my vault', 'open my vault', 'open the vault', 'vault link',
-                 'send me my vault link', 'give me my vault link', 'open my knowledge vault'):
-        return '/vault'
-    if query in ('share', 'share agent', 'share my agent', 'share this agent', 'share link',
-                 'how do i share my agent', 'how can i share my agent'):
+    if query in ('notes', 'my notes', 'open my notes', 'edit my notes', 'notes link',
+                 'send me my notes link', 'give me my notes link', 'open my sprout'):
+        return '/notes'
+    if query in ('share', 'share sprout', 'share my sprout', 'share this sprout', 'share link',
+                 'how do i share my sprout', 'how can i share my sprout'):
         return '/share'
     return None
 
@@ -58,14 +58,14 @@ def deterministic_input(text):
 def available(state, project_id):
     project = state['projects'].get(project_id)
     if not project or project.get('deleted'):
-        raise DomainError('Project is unavailable.', 404)
+        raise DomainError('Sprout is unavailable.', 404)
     return project
 
 
 def owned(state, user_id, project_id):
     project = available(state, project_id)
     if project['owner'] != user_id:
-        raise DomainError('Select a project you own.', 403)
+        raise DomainError('Select a Sprout you own.', 403)
     return project
 
 
@@ -176,7 +176,7 @@ class Service:
         async with self.gates[event.phone]:
             snapshot = await self.snapshot()
             user = snapshot['users'].get(event.phone)
-            prepared = self._prepare_step('issue_vault_link', event.event_id, f'{event.event_id}:0', user['focus'], now) if user and (chat_command(event.text.strip()) or '').lower() == '/vault' else None
+            prepared = self._prepare_step('issue_vault_link', event.event_id, f'{event.event_id}:0', user['focus'], now) if user and (chat_command(event.text.strip()) or '').lower() == '/notes' else None
             def accept(state):
                 initialize(state)
                 if event.event_id in state['receipts']:
@@ -237,13 +237,13 @@ class Service:
             return await self.store.transaction(accept)
 
     async def handle_command(self, job):
-        """Handle a queued text/transcript in its original turn, including vault links."""
+        """Handle a queued text/transcript in its original turn, including notes-editing links."""
         async with self.gates[job['user']]:
             now = self.clock()
             current = check_job(await self.snapshot(), job['id'], job['claim'], now)
             if not deterministic_input(current['question']):
                 return False
-            prepared = self._prepare_step('issue_vault_link', job['id'], f'{job["id"]}:0', current['focus'], now) if (chat_command(current['question']) or '').lower() == '/vault' else None
+            prepared = self._prepare_step('issue_vault_link', job['id'], f'{job["id"]}:0', current['focus'], now) if (chat_command(current['question']) or '').lower() == '/notes' else None
             def complete(state):
                 current = check_job(state, job['id'], job['claim'], now)
                 answer = self._command(state, state['users'][current['user']], current, now, prepared)
@@ -277,57 +277,57 @@ class Service:
             if command == '/edit' and len(parts) == 1:
                 route(state, user, mode='builder', origin=job['id'])
                 project = state['projects'].get(user['focus'])
-                return f'Let’s tinker with {project["name"]}! What would you like to change?' if project else 'Let’s make a little agent! What should it help people with?'
+                return f'Let’s tend to {project["name"]}! What would you like to change?' if project else 'Let’s grow a new Sprout! What should it help people with?'
             if command in ('/edit', '/use') and len(parts) == 2:
                 project = by_code(state, parts[1].rstrip('.,!'))
                 if not project:
-                    raise DomainError('Unknown project code.')
+                    raise DomainError('Unknown Sprout code.')
                 if command == '/edit':
                     owned(state, user['id'], project['id'])
                     route(state, user, mode='builder', focus=project['id'], origin=job['id'])
                 else:
                     route(state, user, mode='customer', selected=project['id'], origin=job['id'])
-                return (f'Let’s tinker with {project["name"]}! Tell me what to change, or ask for its vault.' if command == '/edit'
+                return (f'Let’s tend to {project["name"]}! Tell me what to change, or ask to edit its notes.' if command == '/edit'
                         else f'You’re chatting with {project["name"]} now! What would you like to know?')
-            if command == '/projects' and len(parts) == 1:
+            if command == '/sprouts' and len(parts) == 1:
                 projects = [p for p in state['projects'].values() if p['owner'] == user['id'] and not p.get('deleted')]
-                return '\n'.join(f'{p["name"]}: {p["code"]}' for p in projects) or 'No agents in your little grove yet. Tell me what you’d like to make!'
-            if command == '/vault' and len(parts) == 1:
+                return '\n'.join(f'{p["name"]}: {p["code"]}' for p in projects) or 'No Sprouts in your little grove yet. Tell me what you’d like to grow!'
+            if command == '/notes' and len(parts) == 1:
                 owned(state, user['id'], user['focus'])
                 step = self._intent(state, job, 'issue_vault_link', {}, now)
                 self._execute(state, job, step, now, prepared)
-                return 'Your knowledge vault is ready! Add or edit the notes your agent learns from. This private link lasts one hour.'
+                return 'Your Sprout is ready for tending! Add or edit its notes with this private link, which lasts one hour.'
             if command == '/share' and len(parts) in (1, 2):
                 project = by_code(state, parts[1].rstrip('.,!')) if len(parts) == 2 else available(
                     state, user['selected'] if user['mode'] == 'customer' else user['focus'])
                 if not project:
-                    raise DomainError('I couldn’t find that agent. Check the code and try again.')
+                    raise DomainError('I couldn’t find that Sprout. Check the code and try again.')
                 return f'Send this link to a friend to chat with {project["name"]}:\n{self.share_url(project)}'
             if command == '/help' and len(parts) == 1:
                 if user['mode'] == 'customer' and is_greeting(job['question']):
                     project = available(state, user['selected'])
                     return (f'Hi, I’m {project["name"]}! Nice to meet you. 👋\n\n'
                             'I’m here to help with the notes my owner shares with me. What are you curious about?\n\n'
-                            'Say “help” if you want to learn about making or sharing agents of your own.')
-                return ('Hey! I’m Hypha 🐿️ I help you turn your notes into little iMessage agents.\n\n'
+                            'Say “help” if you want to learn about growing or sharing Sprouts of your own.')
+                return ('Hey! I’m Hypha 🐿️ I help you grow little iMessage Sprouts from your notes.\n\n'
                         'Here’s what we can do together:\n'
-                        'Create an agent and give it a personality\n'
-                        'Add or update its knowledge in a private vault\n'
-                        'Ask it questions about those notes\n'
-                        'Share it with a friend\n\n'
+                        'Grow a Sprout and give it a personality\n'
+                        'Add or update its notes\n'
+                        'Ask your Sprout questions about those notes\n'
+                        'Share your Sprout with a friend\n\n'
                         'You can send me a voice note, too.\n\n'
                         'What would you like to make? You can also ask me about slash commands for shortcuts.')
             if (command == '/commands' and len(parts) == 1) or (command == '/help' and parts[1:] == ['commands']):
                 return ('Here are your shortcuts 🐿️\n\n'
                         '/help — what I can help with\n'
                         '/commands — these shortcuts\n'
-                        '/projects — your agents and their codes\n'
-                        '/edit — create an agent or return to editing\n'
-                        '/edit CODE — edit one of your agents\n'
-                        '/use CODE — chat with an agent\n'
-                        '/vault — open your private knowledge vault\n'
-                        '/share — get a link to share this agent\n'
-                        '/share CODE — get a link for a specific agent')
+                        '/sprouts — your Sprouts and their codes\n'
+                        '/edit — grow a Sprout or return to editing\n'
+                        '/edit CODE — edit one of your Sprouts\n'
+                        '/use CODE — chat with a Sprout\n'
+                        '/notes — add or edit a Sprout’s notes\n'
+                        '/share — get a link to share this Sprout\n'
+                        '/share CODE — get a link for a specific Sprout')
             if not job['question'].startswith('/') or command in ('/reset', '/clear'):
                 return 'History reset is unsupported. Your conversation has not changed.'
             return 'I don’t know that shortcut. Ask me about slash commands to see the list.'
@@ -377,15 +377,15 @@ class Service:
         if name == 'create_project':
             active = [p for p in state['projects'].values() if not p.get('deleted')]
             if len(active) >= self.limits.projects_total or sum(p['owner'] == user['id'] for p in active) >= self.limits.projects_per_user:
-                raise DomainError('Project limit reached.', 429)
+                raise DomainError('Sprout limit reached.', 429)
             project_id, code = prepared['id'], prepared['code']
             if project_id in state['projects'] or any(p['code'] == code for p in state['projects'].values()):
-                raise DomainError('Project code allocation conflicted. Please try again.', 409)
+                raise DomainError('Sprout code allocation conflicted. Please try again.', 409)
             project = {'id': project_id, 'owner': user['id'], 'name': args['name'].strip(), 'code': code,
                 'instructions': ('Be a friendly, curious little guide to the notes your owner shares. Talk like a helpful person, '
                     'with a little warmth and occasional light humor, not a documentation page. Keep answers short and useful. '
                     'If you don’t know something from your notes, say so kindly instead of guessing. '
-                    'Support factual answers with filename and heading citations.'), 'created': now, 'reactions_enabled': False}
+                    'Support factual answers with note name and heading citations.'), 'created': now, 'reactions_enabled': False}
             state['projects'][project_id] = project
             route(state, user, mode='builder', focus=project_id, origin=job['id'])
             result = {'id': project_id, 'name': project['name'], 'code': code}
@@ -394,7 +394,7 @@ class Service:
         elif name == 'select_project':
             project = by_code(state, args['code'])
             if not project:
-                raise DomainError('Unknown project code.')
+                raise DomainError('Unknown Sprout code.')
             owned(state, user['id'], project['id'])
             route(state, user, mode='builder', focus=project['id'], origin=job['id'])
             result = {'id': project['id'], 'name': project['name'], 'code': project['code']}
@@ -409,7 +409,7 @@ class Service:
         else:
             project = owned(state, user['id'], step['target'])
             if not prepared:
-                raise DomainError('Select a project you own before requesting a vault link.')
+                raise DomainError('Select a Sprout you own before requesting an editing link.')
             cap_id = prepared['id']
             cap = {'id': cap_id, 'project': project['id'], 'owner': user['id'], 'job': job['id'],
                    'step': step['id'], 'hash': prepared['hash'], 'expires': prepared['expires'],
@@ -448,7 +448,7 @@ class Service:
         text = redact_links(text)
         for step in job.get('steps', []):
             if step['name'] == 'create_project' and 'result' in step:
-                text += f'\nAgent code: {step["result"]["code"]}\nShare your agent:\n{self.share_url(step["result"])}'
+                text += f'\nSprout code: {step["result"]["code"]}\nShare your Sprout:\n{self.share_url(step["result"])}'
             if step['name'] == 'issue_vault_link' and 'capability' in step.get('result', {}):
                 text = text.replace(step['result']['capability'], '')
         text = '<next_message>'.join(split_messages(text))
@@ -459,14 +459,14 @@ class Service:
             for step in job.get('steps', []):
                 cap_id = step.get('result', {}).get('capability')
                 if cap_id and (cap_id not in state['capabilities'] or state['capabilities'][cap_id]['revoked']):
-                    raise DomainError('The editing link is no longer available. Request /vault again.', 409)
+                    raise DomainError('The editing link is no longer available. Request /notes again.', 409)
         caps, links = [], []
         for cap in state['capabilities'].values():
             if cap['job'] == job['id'] and not cap['revoked']:
                 if cap['expires'] <= now:
-                    raise DomainError('The editing link expired. Request /vault again.', 409)
+                    raise DomainError('The editing link expired. Request /notes again.', 409)
                 material = self.keys.decrypt(state['delivery_material'][cap['id']], f'cap:{cap["id"]}:{cap["project"]}:{cap["step"]}')
-                links.append(f'Open your vault:\n{self.public_url}/vault#{material["token"]}')
+                links.append(f'Edit your Sprout’s notes:\n{self.public_url}/notes#{material["token"]}')
                 caps.append(cap['id'])
         self._outbox(state, job, '\n'.join([text, *links]), caps, versions, now)
         for cap_id in caps:
@@ -477,7 +477,7 @@ class Service:
         if job['question']:
             history.append({'role': 'user', 'content': job['question'], 'created': now})
         messages = split_messages(text)
-        history.extend({'role': 'assistant', 'content': part + ('\n[vault link issued]' if caps and index == len(messages) - 1 else ''),
+        history.extend({'role': 'assistant', 'content': part + ('\n[notes editing link issued]' if caps and index == len(messages) - 1 else ''),
                         'created': now, 'outbox': job['id'], 'part': index} for index, part in enumerate(messages))
         state['conversations'][conversation] = [m for m in history if m['created'] > now - 30 * 86400][-200:]
         job.update(status='completed', completed=now)
@@ -508,7 +508,7 @@ class Service:
         hashed = token_hash(token)
         cap = next((c for c in state['capabilities'].values() if secrets.compare_digest(c['hash'], hashed)), None)
         if not cap or cap['revoked'] or cap['expires'] <= self.clock():
-            raise DomainError('This editing link is invalid or expired. Request /vault in iMessage.', 401)
+            raise DomainError('This editing link is invalid or expired. Request /notes in iMessage.', 401)
         available(state, cap['project'])
         return cap
 
@@ -522,15 +522,15 @@ class Service:
         cap = self.authorize(state, token)
         file = state['files'].get(file_id)
         if not file or file['project'] != cap['project']:
-            raise DomainError('File not found.', 404)
+            raise DomainError('Note not found.', 404)
         return file
 
     async def save_file(self, token, name, content, file_id=None, expected_version=None):
         from app.retrieval import split_markdown
         if not name or len(name) > 120 or not name.lower().endswith('.md') or any(c in name for c in '/\\\x00\r\n'):
-            raise DomainError('Choose a simple .md filename.')
+            raise DomainError('Choose a simple .md note name.')
         if '\x00' in content or len(content.encode('utf-8')) > self.limits.file_bytes:
-            raise DomainError('Markdown must be UTF-8 text within the file size limit.', 413)
+            raise DomainError('A note must be UTF-8 Markdown within the size limit.', 413)
         try:
             chunks = split_markdown(name, content)
         except ValueError as exc:
@@ -543,14 +543,14 @@ class Service:
             files = [f for f in state['files'].values() if f['project'] == project]
             current = state['files'].get(file_id)
             if file_id and (not current or current['project'] != project):
-                raise DomainError('File not found.', 404)
+                raise DomainError('Note not found.', 404)
             if current and current['version'] != expected_version:
-                raise DomainError('This file changed. Reload before saving.', 409)
+                raise DomainError('This note changed. Reload before saving.', 409)
             if any(f['name'].casefold() == name.casefold() and f['id'] != file_id for f in files):
-                raise DomainError('A file with this name exists. Open it to explicitly replace its contents.', 409)
+                raise DomainError('A note with this name exists. Open it to explicitly replace its contents.', 409)
             others = [f for f in files if f['id'] != file_id]
             if len(others) + 1 > self.limits.files_per_project or sum(f['bytes'] for f in others) + len(content.encode()) > self.limits.project_bytes or sum(f['chunk_count'] for f in others) + len(chunks) > self.limits.chunks_per_project:
-                raise DomainError('Project vault quota exceeded.', 413)
+                raise DomainError('Sprout notes limit exceeded.', 413)
             version = current['version'] + 1 if current else 1
             file = {'id': new_id, 'project': project, 'name': name, 'content': content, 'version': version,
                     'status': 'pending', 'bytes': len(content.encode()), 'chunk_count': len(chunks)}
@@ -570,9 +570,9 @@ class Service:
             cap = self.authorize(state, token)
             file = state['files'].get(file_id)
             if not file or file['project'] != cap['project']:
-                raise DomainError('File not found.', 404)
+                raise DomainError('Note not found.', 404)
             if file['version'] != expected_version:
-                raise DomainError('This file changed. Reload before deleting.', 409)
+                raise DomainError('This note changed. Reload before deleting.', 409)
             del state['files'][file_id]
             state['chunks'].pop(file_id, None)
             for job in state['jobs'].values():

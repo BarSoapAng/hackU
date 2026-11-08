@@ -39,7 +39,7 @@ class TestDelivery(IsolatedAsyncioTestCase):
         return Worker(self.service, None, None, PhotonClient(http, 'project', 'synthetic-secret'))
 
     async def issue(self):
-        receipt = await self.service.admit(Inbound('vault-turn', '+14155550123', '+16283166196', '/vault',
+        receipt = await self.service.admit(Inbound('vault-turn', '+14155550123', '+16283166196', '/notes',
                                                    self.now[0], 'space-1', 'agent-1', 'message-1'))
         assert receipt['status'] == 'accepted'
         state = await self.service.snapshot()
@@ -93,8 +93,8 @@ class TestDelivery(IsolatedAsyncioTestCase):
                 assert state['capabilities'][capability]['delivered']
                 assert not state['capabilities'][capability]['revoked']
                 history = self.assistant_history(state)
-                assert history and '[vault link issued]' in history[0]['content']
-                assert '/vault#' not in history[0]['content']
+                assert history and '[notes editing link issued]' in history[0]['content']
+                assert '/notes#' not in history[0]['content']
                 assert [request.method for request in requests] == ['POST', 'GET']
                 assert requests[0].headers['Idempotency-Key'] == 'vault-turn'
                 await self.asyncTearDown()

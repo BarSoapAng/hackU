@@ -41,7 +41,7 @@ test('a message opens its specific activity turn beyond the latest page and can 
   await screen.findByText('0 requests · 0 tools')
   expect(fetch.mock.calls.some(([path]) => path.includes('turn_id=older%3Aturn'))).toBe(true)
   expect(screen.getByText('0 requests · 0 tools').closest('details')?.open).toBe(true)
-  expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Agent activity' }))
+  expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Sprout activity' }))
   expect(screen.getByRole('button', { name: 'Showing this turn’s activity' }).getAttribute('aria-pressed')).toBe('true')
   fireEvent.click(screen.getByRole('button', { name: 'Show all turns' }))
   await waitFor(() => expect(screen.queryByText('0 requests · 0 tools')).toBeNull())

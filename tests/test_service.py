@@ -141,9 +141,9 @@ def test_capability_crash_recovery_handoff_and_confirmed_delivery_cleanup():
         state = await env.service.snapshot()
         assert not state['delivery_material']
         payload = env.service.keys.decrypt(state['outbox'][job['id']]['payload'], f'outbox:{job["id"]}')
-        assert payload['text'].endswith('/vault#' + token)
+        assert payload['text'].endswith('/notes#' + token)
         assert token not in json.dumps(state['conversations']) and token not in json.dumps(state['jobs'])
-        assert '[vault link issued]' in json.dumps(state['conversations'])
+        assert '[notes editing link issued]' in json.dumps(state['conversations'])
         assert not any(m['role'] == 'assistant' for m in env.service.history(state, state['jobs'][job['id']]))
         await env.worker.dispatch(job['id'])
         state = await env.service.snapshot()

@@ -25,7 +25,7 @@ class WebhookError(ValueError):
 class PhotonError(RuntimeError):
     def __init__(self, code: str, status: int | None = None):
         self.code, self.status = code, status
-        super().__init__(code)  # Provider bodies can contain personal data or vault links.
+        super().__init__(code)  # Provider bodies can contain personal data or private editing links.
 
 
 @dataclass(frozen=True)

@@ -95,7 +95,7 @@ Sources: [NVIDIA model card](https://huggingface.co/nvidia/nemotron-speech-strea
 5. Set `TRANSCRIPTION_URL=http://127.0.0.1:8002` and its credential, then
    temporarily set `VOICE_ENABLED=true` for a controlled real iMessage test
    and restart the single backend process as part of the requested rollout.
-   Send an English voice note to Hypha, then a project agent with indexed notes.
+   Send an English voice note to Hypha, then a Sprout with indexed notes.
    Confirm download → transcription → text response, citations, configured
    multi-text replies, read receipts, a voice note immediately followed by text,
    and navigation during transcription. Keep the flag enabled only after this

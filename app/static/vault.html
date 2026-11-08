@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>Knowledge vault · Hypha</title>
+  <title>Sprout notes · Hypha</title>
   <style nonce="__NONCE__">
     :root{font-family:system-ui,sans-serif;color:#17332b;background:#f5f7f4;color-scheme:light}
     *{box-sizing:border-box}body{margin:0}main{max-width:1060px;margin:auto;padding:24px 18px}
@@ -23,19 +23,19 @@
 </head>
 <body>
 <main>
-  <header><h1>Knowledge vault 🐿️</h1><p class="muted">A little home for what your agent knows. Add notes here and your agent can use them once they’re ready.</p></header>
-  <p id="message" role="status" aria-live="polite">Opening your vault…</p>
+  <header><h1>Sprout notes 🐿️</h1><p class="muted">Add notes here and your Sprout can use them once they’re ready.</p></header>
+  <p id="message" role="status" aria-live="polite">Opening your Sprout…</p>
   <div id="workspace" class="layout hidden">
-    <aside aria-label="Markdown files">
-      <div class="toolbar"><button id="create">New file</button><button id="import">Import .md</button><button id="refresh">Refresh</button><input id="upload" type="file" accept=".md,text/markdown" class="hidden"></div>
+    <aside aria-label="Notes">
+      <div class="toolbar"><button id="create">New note</button><button id="import">Import note</button><button id="refresh">Refresh</button><input id="upload" type="file" accept=".md,text/markdown" class="hidden"></div>
       <p id="file-count" class="muted"></p><ul id="files"></ul>
     </aside>
-    <section aria-label="File editor">
-      <p id="empty">Choose a file, create one, or import Markdown to begin.</p>
+    <section aria-label="Note editor">
+      <p id="empty">Choose a note, create one, or import a Markdown note to begin.</p>
       <div id="editor" class="hidden">
-        <label for="name">Filename</label><input id="name" type="text" maxlength="120" autocomplete="off" spellcheck="false" placeholder="notes.md">
+        <label for="name">Note name</label><input id="name" type="text" maxlength="120" autocomplete="off" spellcheck="false" placeholder="notes.md">
         <label for="content">Markdown</label><textarea id="content" spellcheck="false" placeholder="# Your source material"></textarea>
-        <div class="toolbar"><button id="save" class="primary">Save</button><button id="delete" class="danger">Delete file</button></div>
+        <div class="toolbar"><button id="save" class="primary">Save</button><button id="delete" class="danger">Delete note</button></div>
         <p id="file-status" class="muted"></p>
       </div>
     </section>
@@ -50,13 +50,13 @@
   function notice(text, error = false) { byId('message').textContent = text; byId('message').dataset.error = error; }
   function setBusy(value) { busy = value; document.querySelectorAll('button').forEach(button => button.disabled = value); }
   async function api(path, options = {}) {
-    const response = await fetch('/api/vault/files' + path, {
+    const response = await fetch('/api/notes' + path, {
       ...options, cache: 'no-store', credentials: 'omit', redirect: 'error',
       headers: {'Authorization': 'Bearer ' + token, ...(options.headers || {})}
     });
     if (response.status === 401) {
       token = ''; byId('workspace').classList.add('hidden');
-      throw new Error('This link expired. Send /vault in iMessage for a new editing link.');
+      throw new Error('This link expired. Send /notes in iMessage for a new editing link.');
     }
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
@@ -68,7 +68,7 @@
   function canLeave() { return !dirty || confirm('Discard your unsaved changes?'); }
   function renderList() {
     byId('files').replaceChildren();
-    byId('file-count').textContent = files.length + (files.length === 1 ? ' file' : ' files');
+    byId('file-count').textContent = files.length + (files.length === 1 ? ' note' : ' notes');
     for (const file of files) {
       const item = document.createElement('li'), button = document.createElement('button');
       button.setAttribute('aria-current', selected?.id === file.id ? 'true' : 'false');
@@ -85,10 +85,10 @@
     byId('name').value = file.name; byId('content').value = file.content;
     byId('editor').classList.remove('hidden'); byId('empty').classList.add('hidden');
     byId('delete').classList.toggle('hidden', !file.id);
-    byId('file-status').textContent = file.id ? 'Version ' + file.version + ' · ' + file.status : 'New file — save to add it to your vault.';
+    byId('file-status').textContent = file.id ? 'Version ' + file.version + ' · ' + file.status : 'New note — save to add it to your Sprout.';
     renderList();
   }
-  async function refresh() { files = (await api('')).files; renderList(); }
+  async function refresh() { files = (await api('')).notes; renderList(); }
   async function action(fn) {
     if (busy) return;
     setBusy(true);
@@ -96,7 +96,7 @@
     finally { setBusy(false); }
   }
   byId('create').onclick = () => { if (canLeave()) open({name: '', content: '', status: 'new'}); };
-  byId('refresh').onclick = () => action(async () => { await refresh(); notice('File status refreshed. Your unsaved text is preserved.'); });
+  byId('refresh').onclick = () => action(async () => { await refresh(); notice('Note status refreshed. Your unsaved text is preserved.'); });
   byId('name').oninput = byId('content').oninput = () => { dirty = true; };
   byId('save').onclick = () => action(async () => {
     const body = {name: byId('name').value, content: byId('content').value};
@@ -108,7 +108,7 @@
     if (!selected.id || !confirm('Delete ' + selected.name + '?')) return;
     await api('/' + encodeURIComponent(selected.id), json('DELETE', {expected_version: selected.version}));
     selected = null; dirty = false; byId('editor').classList.add('hidden'); byId('empty').classList.remove('hidden');
-    await refresh(); notice('File deleted.');
+    await refresh(); notice('Note deleted.');
   });
   byId('import').onclick = () => { if (canLeave()) byId('upload').click(); };
   byId('upload').onchange = () => action(async () => {
@@ -126,7 +126,7 @@
     open(result); await refresh(); notice('Imported. Indexing is pending.');
   });
   window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
-  if (!token) { notice('Open the full editing link from iMessage. Send /vault for a new link.', true); return; }
+  if (!token) { notice('Open the full editing link from iMessage. Send /notes for a new link.', true); return; }
   action(async () => { await refresh(); byId('workspace').classList.remove('hidden'); notice('Your editing link lasts one hour. Save changes before leaving.'); });
 })();
 </script>

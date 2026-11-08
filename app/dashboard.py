@@ -20,7 +20,7 @@ from app.dashboard_costs import CostConfigurationError, CostDataError, cost_repo
 
 def safe_text(value):
     """Capability links may appear in legacy transcripts; never make them usable."""
-    return re.sub(r'https?://[^\s<>]*?/vault(?:[?#][^\s<>]*)?', '[vault link omitted]', str(value), flags=re.I)
+    return re.sub(r'https?://[^\s<>]*?/(?:notes|vault)(?:[?#][^\s<>]*)?', '[editing link omitted]', str(value), flags=re.I)
 
 
 def safe_number(value, *, integer=False):
@@ -36,7 +36,7 @@ def tool_payload(name, value, *, result=False):
     if result and isinstance(value.get('error'), str):
         return {'error': safe_text(value['error'])}
     if result and name == 'issue_vault_link':
-        return {'vault_link_ready': bool(value.get('capability') or value.get('vault_link_ready'))}
+        return {'notes_link_ready': bool(value.get('capability') or value.get('notes_link_ready'))}
     if result and name == 'update_instructions':
         return {'updated': value['updated']} if isinstance(value.get('updated'), bool) else {}
     if result and name == 'list_projects':
@@ -108,7 +108,7 @@ class DashboardData:
         self.account(account_id)
         project = self.projects.get(project_id)
         if not project or project['owner'] != account_id:
-            raise HTTPException(404, 'Project not found.')
+            raise HTTPException(404, 'Sprout not found.')
         return project
 
     def conversation(self, account_id, conversation_id):
@@ -295,7 +295,7 @@ def create_dashboard_app(store, *, clock=time.time, cache_seconds=2, costs_confi
             current.account(account_id)
         if project_id is not None:
             if account_id is None:
-                raise HTTPException(422, 'Select an account before filtering by project.')
+                raise HTTPException(422, 'Select an account before filtering by Sprout.')
             current.project(account_id, project_id)
         today = datetime.fromtimestamp(current.now, timezone.utc).date()
         end = end or today

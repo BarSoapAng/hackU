@@ -1,7 +1,7 @@
-# iMessage agent builder
+# Hypha
 
-FastAPI handles verified Photon messages, a Nemotron builder, OpenAI project Q&A,
-and a project-scoped Markdown editor. Application state lives in a private
+FastAPI handles verified Photon messages, the Hypha builder, OpenAI Sprout Q&A,
+and a Sprout-scoped notes editor. Application state lives in a private
 SpacetimeDB module; the browser talks only to FastAPI.
 
 The first journey is implemented and covered by mocked integration tests. The
@@ -66,7 +66,7 @@ python -m tools.local tools.verify_integrations models --live
 Generate a key locally, keep it outside the database, and preserve it across
 restarts. `ACTIVE_KEY` selects the key for new ciphertext; retain old keys until
 their pending capability/outbox payloads have expired or been delivered.
-Do not log credentials, tokens, request bodies, or vault URL fragments.
+Do not log credentials, tokens, request bodies, or private editing URL fragments.
 
 Defaults are in [app/config.py](app/config.py). `LIMIT_<UPPERCASE_FIELD>` can lower
 a limit; increasing the starting ceilings requires reviewing database policy
@@ -86,13 +86,13 @@ requires replacing the process-local dispatch gates first.
 
 Hypha greets users with a short capabilities overview. `/help` shows that same
 overview; ask about slash commands or send `/commands` for the separate command list.
-Commands are `/projects`, `/edit` (return to creating/editing), `/edit CODE`,
-`/use CODE`, `/vault`, `/share [CODE]`, `/help`, and `/commands`. File CRUD and imports
-use the mobile vault editor. History reset is unsupported. The initial builder
-tools create/list/select owned projects, update instructions, and issue links;
+Commands are `/sprouts`, `/edit` (return to growing/editing), `/edit CODE`,
+`/use CODE`, `/notes`, `/share [CODE]`, `/help`, and `/commands`. Note editing and imports
+use the mobile Sprout notes editor. History reset is unsupported. Hypha’s initial tools
+grow/list/select owned Sprouts, update instructions, and issue links;
 later tools remain behind the live journey gate.
 
-`/share` provides a public `/a/CODE` link, separate from the private vault link.
+`/share` provides a public `/a/CODE` link, separate from the private notes-editing link.
 First-time recipients enter their iMessage number and explicitly connect it;
 existing Photon assignments are reused and new ones respect the shared 25-seat cap.
 The page opens Messages with `/use CODE` prefilled and provides a copy fallback.
@@ -103,6 +103,6 @@ Provider details: [Photon](docs/photon-contract.md),
 [models and retrieval](docs/model-contract.md), and
 [SpacetimeDB](docs/database-contract.md).
 
-For local, read-only account/project inspection, see the
+For local, read-only account/Sprout inspection, see the
 [internal dashboard](docs/internal-dashboard.md). It runs separately from the
 public application and never starts messaging workers.

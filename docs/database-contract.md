@@ -106,7 +106,7 @@ backend still supplies lease, routing and ownership checks, deterministic
 chunk-count computation, daily budgets, and token hashes/encryption. The
 database checks cannot reconstruct whether a proposal passed every such
 operation check. Whole-state reads/writes also transfer unrelated project
-vectors and do not establish maximum-vault retrieval performance.
+vectors and do not establish maximum-notes retrieval performance.
 
 The listed reducer ceilings are fixed at the plan's starting defaults. Python
 deployment limits may be lowered, but raising one requires a coordinated

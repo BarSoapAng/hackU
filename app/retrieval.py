@@ -29,7 +29,7 @@ def split_markdown(filename: str, content: str) -> list[dict]:
     if not isinstance(content, str) or "\x00" in content:
         raise ValueError("Markdown must be UTF-8 text without NUL characters.")
     if not filename.lower().endswith(".md") or filename in (".md", "..md") or any(c in filename for c in "/\\\x00"):
-        raise ValueError("Use a Markdown filename without a directory path.")
+        raise ValueError("Use a Markdown note name without a directory path.")
     sections, lines, heading, fence = [], [], "", None
     for line in content.splitlines():
         fence_match = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)

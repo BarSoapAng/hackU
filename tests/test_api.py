@@ -43,7 +43,7 @@ class TestApi(IsolatedAsyncioTestCase):
         await self.client.aclose()
 
     async def create(self, name="guide.md", content="# Guide\nA source answer.", auth=None):
-        return await self.client.post("/api/vault/files", headers=self.auth if auth is None else auth,
+        return await self.client.post("/api/notes", headers=self.auth if auth is None else auth,
                                       json={"name": name, "content": content})
 
     async def test_vault_lifecycle_atomic_index_job_and_conflicting_saves(self):
@@ -54,38 +54,38 @@ class TestApi(IsolatedAsyncioTestCase):
         assert "project" not in file
         state = await self.service.snapshot()
         assert f'index:{file["id"]}:1' in state["jobs"]
-        read = await self.client.get("/api/vault/files/" + file["id"], headers=self.auth)
+        read = await self.client.get("/api/notes/" + file["id"], headers=self.auth)
         assert read.json()["content"].startswith("# Guide")
-        updated = await self.client.put("/api/vault/files/" + file["id"], headers=self.auth,
+        updated = await self.client.put("/api/notes/" + file["id"], headers=self.auth,
             json={"name": "guide.md", "content": "A new answer.", "expected_version": 1})
         assert updated.status_code == 200 and updated.json()["version"] == 2
-        conflict = await self.client.put("/api/vault/files/" + file["id"], headers=self.auth,
+        conflict = await self.client.put("/api/notes/" + file["id"], headers=self.auth,
             json={"name": "guide.md", "content": "Stale write.", "expected_version": 1})
         assert conflict.status_code == 409
         assert (await self.service.snapshot())["files"][file["id"]]["content"] == "A new answer."
-        stale_delete = await self.client.request("DELETE", "/api/vault/files/" + file["id"], headers=self.auth,
+        stale_delete = await self.client.request("DELETE", "/api/notes/" + file["id"], headers=self.auth,
                                                 json={"expected_version": 1})
         assert stale_delete.status_code == 409
-        deleted = await self.client.request("DELETE", "/api/vault/files/" + file["id"], headers=self.auth,
+        deleted = await self.client.request("DELETE", "/api/notes/" + file["id"], headers=self.auth,
                                            json={"expected_version": 2})
         assert deleted.status_code == 204
-        assert (await self.client.get("/api/vault/files", headers=self.auth)).json() == {"files": []}
+        assert (await self.client.get("/api/notes", headers=self.auth)).json() == {"notes": []}
         assert (await self.service.snapshot())["jobs"][f'index:{file["id"]}:2']["status"] == "superseded"
 
     async def test_capability_scope_and_header_only_authentication(self):
         other = await self.create(auth={"Authorization": "Bearer token-two"})
         assert other.status_code == 201
-        path = "/api/vault/files/" + other.json()["id"]
+        path = "/api/notes/" + other.json()["id"]
         assert (await self.client.get(path, headers=self.auth)).status_code == 404
         assert (await self.client.put(path, headers=self.auth,
             json={"name": "guide.md", "content": "hijack", "expected_version": 1})).status_code == 404
-        assert (await self.client.get("/api/vault/files?token=token-one")).status_code == 401
-        assert (await self.client.get("/api/vault/files", headers={"Authorization": "Bearer invalid"})).status_code == 401
+        assert (await self.client.get("/api/notes?token=token-one")).status_code == 401
+        assert (await self.client.get("/api/notes", headers={"Authorization": "Bearer invalid"})).status_code == 401
 
     async def test_expired_or_revoked_token_cannot_read_or_save(self):
         self.now[0] += 3600
         assert (await self.create()).status_code == 401
-        assert (await self.client.get("/api/vault/files", headers=self.auth)).status_code == 401
+        assert (await self.client.get("/api/notes", headers=self.auth)).status_code == 401
         self.now[0] -= 3600
         await self.service.store.transaction(lambda state: state["capabilities"]["p1"].update(revoked=True))
         assert (await self.create()).status_code == 401
@@ -95,16 +95,16 @@ class TestApi(IsolatedAsyncioTestCase):
         assert (await self.create()).status_code == 404
 
     async def test_upload_utf8_limit_filename_and_duplicate_rules(self):
-        response = await self.client.post("/api/vault/files/upload", params={"name": "source.md"},
+        response = await self.client.post("/api/notes/upload", params={"name": "source.md"},
                                           headers=self.auth, content="# Café\nText".encode())
         assert response.status_code == 201 and response.json()["content"] == "# Café\nText"
-        duplicate = await self.client.post("/api/vault/files/upload", params={"name": "source.md"},
+        duplicate = await self.client.post("/api/notes/upload", params={"name": "source.md"},
                                            headers=self.auth, content=b"replacement")
         assert duplicate.status_code == 409
-        invalid = await self.client.post("/api/vault/files/upload", params={"name": "binary.md"},
+        invalid = await self.client.post("/api/notes/upload", params={"name": "binary.md"},
                                          headers=self.auth, content=b"\xff\xfe")
         assert invalid.status_code == 400
-        oversized = await self.client.post("/api/vault/files/upload", params={"name": "large.md"},
+        oversized = await self.client.post("/api/notes/upload", params={"name": "large.md"},
                                            headers=self.auth, content=b"a" * (self.service.limits.file_bytes + 1))
         assert oversized.status_code == 413
         assert (await self.create("../evil.md")).status_code == 400
@@ -115,12 +115,12 @@ class TestApi(IsolatedAsyncioTestCase):
         for body in [{"name": "guide.md", "content": "new"},
                      {"name": "guide.md", "content": "new", "expected_version": True},
                      {"name": "guide.md", "content": "new", "expected_version": 1, "project": "p2"}]:
-            assert (await self.client.put("/api/vault/files/" + file["id"], headers=self.auth, json=body)).status_code == 422
-        for path in ["/api/vault/settings", "/api/vault/chat", "/api/vault/reset", "/api/vault/files/" + file["id"] + "/reindex"]:
-            assert (await self.client.post(path, headers=self.auth)).status_code == 404
+            assert (await self.client.put("/api/notes/" + file["id"], headers=self.auth, json=body)).status_code == 422
+        for path in ["/api/notes/settings", "/api/notes/chat", "/api/notes/reset", "/api/notes/" + file["id"] + "/reindex"]:
+            assert (await self.client.post(path, headers=self.auth)).status_code in (404, 405)
 
     async def test_editor_security_headers_and_no_token_storage(self):
-        response = await self.client.get("/vault")
+        response = await self.client.get("/notes")
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
         assert response.headers["referrer-policy"] == "no-referrer"
@@ -130,6 +130,11 @@ class TestApi(IsolatedAsyncioTestCase):
         assert "history.replaceState" in response.text and "location.hash" in response.text
         assert "localStorage" not in response.text and "sessionStorage" not in response.text
         assert ".innerHTML" not in response.text
+
+    async def test_retired_routes_are_absent(self):
+        assert (await self.client.get('/vault')).status_code == 404
+        assert (await self.client.get('/api/vault/files', headers=self.auth)).status_code == 404
+        assert (await self.client.post('/api/agents/FIRST/connect', json={'phone': '+14155550999'})).status_code == 404
 
     def delivery(self, *, event_id="event-1", text="Help me create an agent", kind="human", received="2026-01-01T00:00:00Z"):
         def user(identifier, kind, phone):
@@ -245,7 +250,7 @@ class TestApi(IsolatedAsyncioTestCase):
 
     async def test_share_opt_in_connects_correct_number_and_remembers_it_without_creating_user(self):
         self.photon.enroll = AsyncMock(return_value=Assignment('guest-assignment', '+14155550999', '+16283166222', self.now[0]))
-        response = await self.client.post('/api/agents/FIRST/connect', json={'phone': '+1 (415) 555-0999'})
+        response = await self.client.post('/api/sprouts/FIRST/connect', json={'phone': '+1 (415) 555-0999'})
         assert response.status_code == 200
         assert response.json() == {'destination': '+16283166222', 'message': '/use FIRST'}
         assert self.photon.enroll.call_args.args[0] == '+14155550999'
@@ -262,10 +267,10 @@ class TestApi(IsolatedAsyncioTestCase):
 
     async def test_share_rejects_invalid_requests_before_enrollment_and_handles_capacity(self):
         self.photon.enroll = AsyncMock(side_effect=PhotonError('PHOTON_ASSIGNMENT_CAPACITY'))
-        assert (await self.client.post('/api/agents/FIRST/connect', json={'phone': '4155550999'})).status_code == 400
-        assert (await self.client.post('/api/agents/UNKNOWN/connect', json={'phone': '+14155550999'})).status_code == 404
-        assert (await self.client.post('/api/agents/FIRST/connect', headers={'Origin': 'https://unrelated.test'}, json={'phone': '+14155550999'})).status_code == 403
+        assert (await self.client.post('/api/sprouts/FIRST/connect', json={'phone': '4155550999'})).status_code == 400
+        assert (await self.client.post('/api/sprouts/UNKNOWN/connect', json={'phone': '+14155550999'})).status_code == 404
+        assert (await self.client.post('/api/sprouts/FIRST/connect', headers={'Origin': 'https://unrelated.test'}, json={'phone': '+14155550999'})).status_code == 403
         self.photon.enroll.assert_not_awaited()
-        response = await self.client.post('/api/agents/FIRST/connect', json={'phone': '+14155550999'})
+        response = await self.client.post('/api/sprouts/FIRST/connect', json={'phone': '+14155550999'})
         assert response.status_code == 503 and 'spots are full' in response.json()['detail']
         assert '+14155550999' not in (await self.service.snapshot())['assignments']

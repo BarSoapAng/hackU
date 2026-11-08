@@ -18,7 +18,7 @@ def test_builder_resumes_committed_mutation_and_original_tool_intent_after_crash
                 {'id': 'create', 'name': 'create_project', 'arguments': {'name': 'Bakery'}},
                 {'id': 'vault', 'name': 'issue_vault_link', 'arguments': {}},
             ]},
-            {'text': 'Your project and vault are ready.', 'tool_calls': []},
+            {'text': 'Your Sprout and its notes are ready.', 'tool_calls': []},
         ]
         await env.service.admit(inbound(env, 'build', 'Create Bakery and open its vault'))
         job = await env.worker.claim('turn')
@@ -76,7 +76,7 @@ def test_old_worker_claim_cannot_commit_after_reclaim():
 def test_one_model_turn_per_user_and_fifo_with_retry_wait():
     async def scenario():
         env = await environment()
-        await env.service.admit(inbound(env, 'first', 'Help me create an agent'))
+        await env.service.admit(inbound(env, 'first', 'Help me grow a Sprout'))
         await env.service.admit(inbound(env, 'second', 'Next question'))
         await env.service.admit(inbound(env, 'guest', 'Other user', guest=True))
         first = await env.worker.claim('turn')
@@ -294,7 +294,7 @@ def test_generation_retry_budget_is_shared_and_stops_before_fifth_request(monkey
 
     async def scenario():
         env = await environment()
-        await env.service.admit(inbound(env, 'turn', 'Help me create an agent'))
+        await env.service.admit(inbound(env, 'turn', 'Help me grow a Sprout'))
         job = await env.worker.claim('turn')
         provider = AsyncMock(side_effect=ProviderError('temporary', retryable=True))
         with pytest.raises(DomainError, match='model service is temporarily unavailable') as failure:
@@ -314,7 +314,7 @@ def test_generation_can_recover_on_last_allowed_attempt(monkeypatch):
 
     async def scenario():
         env = await environment()
-        await env.service.admit(inbound(env, 'turn', 'Help me create an agent'))
+        await env.service.admit(inbound(env, 'turn', 'Help me grow a Sprout'))
         job = await env.worker.claim('turn')
         provider = AsyncMock(side_effect=[ProviderError('temporary', retryable=True)] * 3 + ['Recovered'])
         assert await env.worker.generate(job, provider) == 'Recovered'

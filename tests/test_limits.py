@@ -107,8 +107,8 @@ def test_pasted_vault_links_never_enter_job_history_or_model_context():
         token, _, _ = await issue_capability(env, job)
         await env.service.complete(job['id'], job['claim'], 'Created')
         await env.worker.dispatch(job['id'])
-        env.models.builder.return_value = {'text': f'Your old link https://vault.example/vault#{token}', 'tool_calls': []}
-        await env.service.admit(inbound(env, 'pasted', f'Help with https://vault.example/vault#{token} please'))
+        env.models.builder.return_value = {'text': f'Your old link https://vault.example/notes#{token}', 'tool_calls': []}
+        await env.service.admit(inbound(env, 'pasted', f'Help with https://vault.example/notes#{token} please'))
         before = await env.service.snapshot()
         assert token not in json.dumps(before['jobs'])
         await env.worker.run_job(await env.worker.claim('turn'))
@@ -116,7 +116,7 @@ def test_pasted_vault_links_never_enter_job_history_or_model_context():
         assert token not in json.dumps(env.models.builder.call_args.args)
         assert token not in json.dumps(state['jobs'])
         assert token not in json.dumps(state['conversations'])
-        assert '[vault link omitted]' in json.dumps(state['conversations'])
+        assert '[editing link omitted]' in json.dumps(state['conversations'])
     asyncio.run(scenario())
 
 

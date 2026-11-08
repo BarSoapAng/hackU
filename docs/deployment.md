@@ -3,7 +3,7 @@
 ## Current local setup
 
 The user authorized live setup on 2026-11-07 (America/Winnipeg). Database and
-model probes passed, and the owner's real create-project/vault-link exchange
+model probes passed, and the owner’s real Sprout/notes-link exchange
 was confirmed delivered. Windows runs one background backend and an ngrok
 HTTPS tunnel; the existing WSL/Brev forward supplies Nemotron. The live URL and
 all credentials are in ignored `.env`. This demo depends on the laptop and
@@ -94,7 +94,7 @@ after the mapping is available.
 
 Configure a real HTTPS reverse proxy for `PUBLIC_URL`. Proxy the backend port
 and do not log authorization headers, request/response bodies, or query strings.
-The vault link carries its token in the URL fragment; the browser removes it
+The notes-editing link carries its token in the URL fragment; the browser removes it
 from the address bar and uses an Authorization header. Set no caching and honor
 the application's no-referrer and content-security headers.
 
@@ -131,18 +131,18 @@ delivery counts without logging contents or secrets.
 ## Two-person acceptance checklist
 
 1. Record both Photon assignment IDs and returned destinations privately.
-2. Owner texts their assigned line after assignment, creates a project with
-   Nemotron, receives its stable code and a one-hour vault link.
+2. Owner texts their assigned line after assignment, creates a Sprout with
+   Nemotron, receives its stable code and a one-hour notes-editing link.
 3. Upload Markdown, observe pending then ready, and verify conflicting saves
    return 409 rather than overwriting a newer version.
 4. Second participant texts their own returned destination, sends `/use CODE`,
    and gets a cited OpenAI answer. Check a supported question, an unsupported
-   question, malicious source instructions, and an empty project.
+   question, malicious source instructions, and a Sprout without notes.
 5. Exercise navigation during generation and both submission race orderings.
    Stop/restart after a tool mutation and after capability issuance, then during
    Photon submission. Confirm no duplicate mutation, token reissuance, or blind
    resend of an ambiguously accepted message.
-6. Measure vector-fetch plus cosine scoring over a maximum-size vault across
+6. Measure vector-fetch plus cosine scoring over a maximum-size notes collection across
    enough requests to report p95, excluding providers. Target <1 second. Reduce
    limits if needed; do not claim the singleton scaffold meets this target.
 7. Record real OpenAI model access, source-answer behavior, webhook redelivery
@@ -160,7 +160,7 @@ final encrypted outbox handoff and history/job completion are one transaction.
 After delivery, expiry, revocation, or cancellation, no recoverable token copy
 is retained. Losing the encryption key means pending links cannot be recovered;
 do not regenerate capabilities by replaying a completed step. Revoke affected
-pending work and request a fresh `/vault` turn.
+pending work and request a fresh `/notes` turn.
 
 An interrupted `submitting` record becomes `unknown`, never `pending`. Reconcile
 only through a known Photon message ID. The adapter does not automatically resend
@@ -172,10 +172,10 @@ retry the worker loop up to five times, recovering uncertain submissions only
 after the previous loop's tasks have stopped. Persistent failure makes health
 unavailable and requires operator attention.
 
-Index jobs commit only for the current file version. Changed or deleted files
+Index jobs commit only for the current note version. Changed or deleted notes
 stop participating in retrieval immediately. Transient failures retry with
 bounded backoff; budget exhaustion leaves current text intact and indexing pending.
-Before the manual-retry extension, explicitly saving the file again creates a new
+Before the manual-retry extension, explicitly saving the note again creates a new
 version/index job and still consumes the same hourly retry and embedding quotas.
 
 Run cleanup routinely (the worker does so each minute). Histories retain at most

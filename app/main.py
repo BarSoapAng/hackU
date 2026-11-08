@@ -90,7 +90,7 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
                 if close:
                     await close()
 
-    app = FastAPI(title="Project vault", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(title="Hypha", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.service = service
 
     @app.middleware("http")
@@ -115,7 +115,7 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
             # JSON escaping may multiply UTF-8 size; the service enforces actual text quotas.
             return model.model_validate_json(await bounded_body(request, service.limits.file_bytes * 6 + 4096))
         except ValidationError:
-            raise DomainError("Invalid file request. Include a filename, text, and the current version for changes.", 422) from None
+            raise DomainError("Invalid note request. Include a note name, text, and the current version for changes.", 422) from None
 
     @app.get("/healthz")
     async def health():
@@ -152,7 +152,7 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
         state = await service.snapshot()
         project = by_code(state, code)
         if not project:
-            raise DomainError("That agent is no longer available.", 404)
+            raise DomainError("That Sprout is no longer available.", 404)
         destination = ''
         cookie = request.cookies.get('acorn_connection', '')
         if cookie and len(cookie) < 1024:
@@ -170,13 +170,13 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
             f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
             "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"})
 
-    @app.post('/api/agents/{code}/connect')
+    @app.post('/api/sprouts/{code}/connect')
     async def connect_agent(code: str, request: Request):
         if request.headers.get('origin', service.public_url) != service.public_url:
-            raise DomainError('Open the agent’s share link to connect.', 403)
+            raise DomainError('Open the Sprout’s share link to connect.', 403)
         project = by_code(await service.snapshot(), code)
         if not project:
-            raise DomainError('That agent is no longer available.', 404)
+            raise DomainError('That Sprout is no longer available.', 404)
         try:
             body = AgentConnection.model_validate_json(await bounded_body(request, 1024))
             phone = normalize_phone(body.phone)
@@ -196,7 +196,7 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
                 await service.store.transaction(remember)
         except (PhotonError, httpx.HTTPError) as error:
             if isinstance(error, PhotonError) and error.code == 'PHOTON_ASSIGNMENT_CAPACITY':
-                raise DomainError('This demo’s texting spots are full. Ask the person who shared the agent to make room.', 503) from None
+                raise DomainError('This demo’s texting spots are full. Ask the person who shared the Sprout to make room.', 503) from None
             raise DomainError('We couldn’t connect your number just yet. Please try again shortly.', 503) from None
         response = JSONResponse({'destination': assignment.destination, 'message': '/use ' + project['code']})
         sealed = service.keys.encrypt({'phone': phone, 'expires': now + 30 * 86400}, 'share-connection')
@@ -204,26 +204,26 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
                             max_age=30 * 86400, secure=True, httponly=True, samesite='lax')
         return response
 
-    @app.get("/vault", response_class=HTMLResponse)
-    async def vault():
+    @app.get("/notes", response_class=HTMLResponse)
+    async def notes():
         nonce = secrets.token_urlsafe(24)
         html = Path(__file__).with_name("static").joinpath("vault.html").read_text(encoding="utf-8")
         return HTMLResponse(html.replace("__NONCE__", nonce), headers={"Content-Security-Policy":
             f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
             "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"})
 
-    @app.get("/api/vault/files")
+    @app.get("/api/notes")
     async def files(request: Request):
-        return {"files": await service.list_files(bearer(request))}
+        return {"notes": await service.list_files(bearer(request))}
 
-    @app.post("/api/vault/files", status_code=201)
+    @app.post("/api/notes", status_code=201)
     async def create_file(request: Request):
         token = bearer(request)
         service.authorize(await service.snapshot(), token)
         body = await body_model(request, FileWrite)
         return public_file(await service.save_file(token, body.name, body.content))
 
-    @app.post("/api/vault/files/upload", status_code=201)
+    @app.post("/api/notes/upload", status_code=201)
     async def upload_file(request: Request, name: str):
         token = bearer(request)
         service.authorize(await service.snapshot(), token)
@@ -231,21 +231,21 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
         try:
             content = raw.decode("utf-8")
         except UnicodeDecodeError:
-            raise DomainError("Import a UTF-8 .md file.", 400) from None
+            raise DomainError("Import a UTF-8 .md note.", 400) from None
         return public_file(await service.save_file(token, name, content))
 
-    @app.get("/api/vault/files/{file_id}")
+    @app.get("/api/notes/{file_id}")
     async def read_file(request: Request, file_id: str):
         return public_file(await service.read_file(bearer(request), file_id))
 
-    @app.put("/api/vault/files/{file_id}")
+    @app.put("/api/notes/{file_id}")
     async def update_file(request: Request, file_id: str):
         token = bearer(request)
         service.authorize(await service.snapshot(), token)
         body = await body_model(request, FileUpdate)
         return public_file(await service.save_file(token, body.name, body.content, file_id, body.expected_version))
 
-    @app.delete("/api/vault/files/{file_id}", status_code=204)
+    @app.delete("/api/notes/{file_id}", status_code=204)
     async def delete_file(request: Request, file_id: str):
         token = bearer(request)
         service.authorize(await service.snapshot(), token)

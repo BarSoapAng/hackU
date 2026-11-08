@@ -65,7 +65,7 @@ def test_project_message_style_reaches_model_with_source_citations(preference):
     result = asyncio.run(ModelGateway(nemotron, openai).answer(preference, [],
         [{'filename': 'hours.md', 'heading': 'Opening', 'text': 'Open at nine.'}], 'When?'))
     request = openai.responses.create.call_args.kwargs
-    assert request['input'][1]['content'] == 'Project preferences:\n' + preference
+    assert request['input'][1]['content'] == 'Sprout preferences:\n' + preference
     assert 'honor a single-message preference' in request['input'][0]['content']
     assert result == text
 

@@ -1,1 +1,1 @@
-"""iMessage agent builder."""
+"""Hypha iMessage Sprout builder."""

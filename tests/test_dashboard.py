@@ -20,7 +20,7 @@ def dashboard():
                      'deleted': {'id': 'deleted', 'name': 'Deleted', 'code': 'DELETED', 'owner': '+1001', 'deleted': True}},
         'conversations': {
             '+1001:builder': [{'role': 'user', 'content': 'Make a project', 'created': now - 9},
-                              {'role': 'assistant', 'content': 'Open https://example.test/vault#secret-token',
+                              {'role': 'assistant', 'content': 'Open https://example.test/notes#secret-token',
                                'created': now - 8, 'outbox': 'b1'}],
             '+1002:builder': [{'role': 'user', 'content': 'Private builder', 'created': now - 9}],
             '+1003:project:p1': [{'role': 'user', 'content': 'Question', 'created': now - 6},
@@ -88,7 +88,7 @@ async def test_transcript_redacts_links_and_preserves_multipart_delivery(dashboa
         assert [m['delivery_status'] for m in result['messages']] == [None, 'sent', 'unknown']
         assert result['messages'][1]['job_id'] == 'j1'
         builder = await http.get(conversation_path(conversation='+1001:builder'))
-        assert builder.json()['messages'][-1]['content'] == 'Open [vault link omitted]'
+        assert builder.json()['messages'][-1]['content'] == 'Open [editing link omitted]'
         assert 'secret-token' not in builder.text and 'ciphertext' not in builder.text
         assert builder.headers['cache-control'] == 'no-store'
         assert builder.headers['x-frame-options'] == 'DENY'

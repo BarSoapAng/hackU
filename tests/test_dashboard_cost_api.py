@@ -66,7 +66,7 @@ async def test_cost_api_rejects_invalid_scope_period_and_provider(dashboard, par
 
 async def test_cost_api_filters_scope_and_redacts_labels(dashboard):
     _, _, state, now = configured(dashboard, rates())
-    state['projects']['p1']['name'] = 'Project https://example.test/vault#never-expose'
+    state['projects']['p1']['name'] = 'Project https://example.test/notes#never-expose'
     app = create_dashboard_app(MemoryStore(state), clock=lambda: now, costs_config=rates())
     async with client(app) as http:
         result = (await http.get('/api/internal/costs', params={
@@ -74,7 +74,7 @@ async def test_cost_api_filters_scope_and_redacts_labels(dashboard):
         })).json()
         other = (await http.get('/api/internal/costs', params={'account_id': '+1002', 'provider': 'openai'})).json()
     assert result['known_estimated_usd'] == 1
-    assert result['projects'][0]['label'] == 'Project [vault link omitted]'
+    assert result['projects'][0]['label'] == 'Project [editing link omitted]'
     assert [row['id'] for row in result['accounts']] == ['+1001']
     assert other['known_estimated_usd'] == 0
     assert other['coverage']['request_count'] == 0

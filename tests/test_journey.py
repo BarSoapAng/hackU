@@ -65,7 +65,7 @@ async def create_project(service, worker, nemotron):
     project = next(iter(state["projects"].values()))
     body = service.keys.decrypt(state["outbox"]["owner-create"]["payload"], "outbox:owner-create")["text"]
     assert project["code"] in body
-    token = body.split("/vault#")[1]
+    token = body.split("/notes#")[1]
     return project, token
 
 
@@ -91,7 +91,7 @@ def test_full_two_user_journey_preserves_isolation_and_private_link_material():
         assert state["users"]["+15550000001"]["focus"] == project["id"]
         assert state["jobs"]["owner-create"]["revision"] == state["users"]["+15550000001"]["revision"]
         await worker.dispatch("owner-create")
-        assert "/vault#" + token in photon.send.call_args.args[2]
+        assert "/notes#" + token in photon.send.call_args.args[2]
         assert "payload" not in (await service.snapshot())["outbox"]["owner-create"]
 
         await service.admit(event("guest-use", "/use " + project["code"], guest=True))

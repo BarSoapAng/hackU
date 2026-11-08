@@ -11,7 +11,7 @@ export function AccountSwitcher({ accountId, onSelect }: { accountId: string | n
     <Dialog.Portal>
       <Dialog.Overlay className="fixed inset-0 z-40 bg-stone-950/40" />
       <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[90dvh] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border bg-card shadow-xl focus:outline-none">
-        <div className="relative border-b p-6 pr-16"><Dialog.Title className="text-xl font-semibold">View as user</Dialog.Title><Dialog.Description className="mt-2 text-sm leading-relaxed text-muted-foreground">Choose an account to explore its projects and conversations. All views are read only.</Dialog.Description><Dialog.Close asChild><Button variant="ghost" className="absolute right-3 top-3 px-3" aria-label="Close account switcher"><X /></Button></Dialog.Close></div>
+        <div className="relative border-b p-6 pr-16"><Dialog.Title className="text-xl font-semibold">View as user</Dialog.Title><Dialog.Description className="mt-2 text-sm leading-relaxed text-muted-foreground">Choose an account to explore its Sprouts and conversations. All views are read only.</Dialog.Description><Dialog.Close asChild><Button variant="ghost" className="absolute right-3 top-3 px-3" aria-label="Close account switcher"><X /></Button></Dialog.Close></div>
         {open && <AccountPicker accountId={accountId} onSelect={id => { onSelect(id); setOpen(false) }} />}
       </Dialog.Content>
     </Dialog.Portal>
@@ -27,7 +27,7 @@ function AccountPicker({ accountId, onSelect }: { accountId: string | null; onSe
     <div className="min-h-0 overflow-y-auto px-3 pb-3">
       <RequestState {...request} />
       {request.data?.items.map(user => <button key={user.id} onClick={() => onSelect(user.id)} className="flex min-h-20 w-full items-center justify-between gap-4 rounded-lg px-3 py-3 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <span className="min-w-0"><span className="block break-all font-medium">{user.phone}</span><span className="mt-1 block text-sm text-muted-foreground">{user.project_count} projects · {user.conversation_count} conversations</span></span>
+        <span className="min-w-0"><span className="block break-all font-medium">{user.phone}</span><span className="mt-1 block text-sm text-muted-foreground">{user.project_count} Sprouts · {user.conversation_count} conversations</span></span>
         {user.id === accountId ? <Badge className="bg-accent text-primary">Viewing</Badge> : <ArrowUpRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />}
       </button>)}
       {request.data && !request.data.items.length && <Empty title={query ? 'No matching users' : 'No users yet'}>{query ? 'Try another phone number.' : 'Users appear after their first accepted message.'}</Empty>}

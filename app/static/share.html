@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <meta property="og:title" content="Chat with __NAME__ on Hypha">
-  <meta property="og:description" content="A little agent, right in your messages.">
+  <meta property="og:description" content="A little Sprout, right in your messages.">
   <title>Meet __NAME__ · Hypha</title>
   <style nonce="__NONCE__">
     :root{font-family:system-ui,sans-serif;color:#233b2b;background:#f5f2e9;color-scheme:light}
@@ -22,11 +22,11 @@
   <div class="mascot" aria-hidden="true">🐿️</div>
   <p class="muted">A little introduction from Hypha</p>
   <h1>Meet __NAME__</h1>
-  <p>Your new agent is a text away. We’ll open Messages with your first message ready to send.</p>
+  <p>This Sprout is a text away. We’ll open Messages with your first message ready to send.</p>
   <form id="connect">
     <label for="phone">Your iMessage number</label>
     <input id="phone" type="tel" autocomplete="tel" maxlength="32" placeholder="+1 204 555 0123" required>
-    <p class="muted">Use the number you text from, including its country code. This connects it to the agent; it doesn’t send a message.</p>
+    <p class="muted">Use the number you text from, including its country code. This connects it to the Sprout; it doesn’t send a message.</p>
     <button id="submit" type="submit">Connect &amp; open Messages</button>
   </form>
   <div id="ready" hidden>
@@ -49,13 +49,13 @@
     byId('command').textContent = message;
     byId('destination').textContent = destination;
     form.hidden = true; byId('ready').hidden = false;
-    byId('status').textContent = 'All set! Your agent is ready to chat.';
+    byId('status').textContent = 'All set! Your Sprout is ready to chat.';
     if (openNow) location.href = link;
   }
   form.addEventListener('submit', async event => {
     event.preventDefault(); byId('submit').disabled = true; byId('status').textContent = 'Making introductions…';
     try {
-      const response = await fetch('/api/agents/' + encodeURIComponent(code) + '/connect', {
+      const response = await fetch('/api/sprouts/' + encodeURIComponent(code) + '/connect', {
         method: 'POST', headers: {'Content-Type': 'application/json'}, cache: 'no-store',
         body: JSON.stringify({phone: byId('phone').value})
       });

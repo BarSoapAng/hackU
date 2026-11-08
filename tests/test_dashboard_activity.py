@@ -112,7 +112,7 @@ async def test_tools_are_allowlisted_and_capabilities_reduced_to_readiness(state
          'arguments': {'api_key': 'hidden-key'}, 'result': {'capability': 'hidden-capability',
              'hash': 'hidden-hash', 'ciphertext': {'nested': 'hidden-ciphertext'}, 'expires': now + 10}},
         {'id': 's2', 'name': 'update_instructions', 'created': now - 8,
-         'arguments': {'instructions': 'Read https://example.test/vault#hidden-url', 'credential': {'token': 'hidden-token'}},
+         'arguments': {'instructions': 'Read https://example.test/notes#hidden-url', 'credential': {'token': 'hidden-token'}},
          'result': {'updated': True, 'capability': 'hidden-capability'}},
         {'id': 's3', 'name': 'list_projects', 'created': now - 7, 'arguments': {},
          'result': {'projects': [{'id': 'p1', 'name': 'First', 'code': 'FIRST',
@@ -124,9 +124,9 @@ async def test_tools_are_allowlisted_and_capabilities_reduced_to_readiness(state
         response = await http.get(path() + '/activity')
         tools = response.json()['items'][0]['tools']
     assert 'hidden-' not in response.text
-    assert tools[0]['result'] == {'vault_link_ready': True}
+    assert tools[0]['result'] == {'notes_link_ready': True}
     assert tools[0]['arguments'] == {}
-    assert tools[1]['arguments'] == {'instructions': 'Read [vault link omitted]'}
+    assert tools[1]['arguments'] == {'instructions': 'Read [editing link omitted]'}
     assert tools[2]['result'] == {'projects': [{'id': 'p1', 'name': 'First', 'code': 'FIRST'}]}
     assert tools[3]['arguments'] == {} and tools[3]['result'] == {}
 

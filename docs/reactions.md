@@ -1,15 +1,15 @@
 # Message reactions
 
 Set `TYPESAFE_API_KEY` on the backend to enable Jev decisions. Without the key,
-ordinary text replies continue without reactions. The builder enables reactions
-by default; existing and new projects default to disabled. Owners can ask the
-builder to enable or disable reactions for the selected agent. This uses the
+ordinary text replies continue without reactions. Hypha enables reactions
+by default; existing and new Sprouts default to disabled. Owners can ask
+Hypha to enable or disable reactions for the selected Sprout. This uses the
 owner-checked `set_reactions(enabled: bool)` tool and a persisted
-`reactions_enabled` project field, not an instruction-text preference.
+internal `reactions_enabled` field, not an instruction-text preference.
 
 The server sends the current text, up to 40 messages of existing conversation
-context, and the agent's name/instructions to Jev 1.14.0. Vault capability links
-are redacted; project documents, credentials, and routing identifiers are not
+context, and the Sprout’s name/instructions to Jev 1.14.0. Notes-editing capability links
+are redacted; Sprout notes, credentials, and routing identifiers are not
 included. `JevClient.payload()` exposes the exact request for inspection without
 logging private message content. Three bundled questions judge whether a reaction
 fits, its meaning, and whether the message is purely social. The two yes/no gates
@@ -42,7 +42,7 @@ uncertain/failed removal can leave eyes visible. A queued response is not proof
 of visible delivery. These are the same provider uncertainty limits as text
 delivery, and operation status stays in the outbox for inspection.
 
-Mocked tests cover the decision policy, HTTP encoding, project ownership,
+Mocked tests cover the decision policy, HTTP encoding, Sprout ownership,
 social-only history, fallback, deduplication, recovery, and eyes cleanup. No live
 Jev or Photon requests were made for verification. Actual reaction visibility
 and removal on the shared iMessage line remain a live verification step.

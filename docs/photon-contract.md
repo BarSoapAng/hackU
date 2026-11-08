@@ -6,7 +6,7 @@ Subsequent authorized live setup: the existing Photon API key passed assignment
 reads, a `2026-07-01` destination was created for `message.received`, and its
 signing secret was saved privately in `.env`. The destination was enabled after
 the public backend health check passed. The owner's real inbound text registered
-their user and triggered project creation plus a vault link; Photon confirmed
+their user and triggered Sprout creation plus a notes-editing link; Photon confirmed
 the reply delivered after one submission. No additional participant was assigned.
 The two-participant Q&A journey and provider retry-window guarantees remain pending.
 
@@ -49,12 +49,12 @@ they are not delivery proof. Multi-text replies get two quick initial lookups,
 then the existing bounded backoff. No uncertain submission is blindly replayed.
 
 The encrypted outbox persists the remaining texts and delivered count. Each
-bubble rechecks routing, assignment, source versions, and vault expiry before
+bubble rechecks routing, assignment, source versions, and editing-link expiry before
 sending. A failure, navigation change, or changed source stops the remaining
 bubbles. A missing message ID after an ambiguous send leaves that sequence
 stopped. Delivery checks for an earlier bubble cannot advance a later bubble.
 Other replies wait behind an earlier active sequence; permanently unresolved
-sequences do not block the conversation forever. Vault links are appended only
+sequences do not block the conversation forever. Notes-editing links are appended only
 to the final bubble. Existing single-message outbox records remain compatible.
 
 Mocked tests cover actual Photon request encoding, status polling, per-bubble
@@ -73,7 +73,7 @@ checks the public agent, limits connection attempts, reuses existing assignments
 and persists the returned destination before opening Messages. Connection and periodic
 assignment refresh share a process-local gate. A secure encrypted browser cookie
 remembers the recipient's routing for 30 days. A shared agent link never contains a
-vault capability. No app user or conversation is created until a verified inbound text.
+notes-editing capability. No app user or conversation is created until a verified inbound text.
 This demo still has 25 shared-line seats; the form does not prove control of a number,
 so verified-phone onboarding/abuse controls remain necessary for a broad public rollout.
 Messages links use the recipient's actual assigned destination and an encoded
@@ -108,6 +108,6 @@ The exact webhook redelivery retention window also remains unverified. Retain co
 
 ## Attachments and live gate
 
-The REST specification exposes authenticated attachment metadata and content endpoints, but attachment import is a later extension. V1 ignores attachment events and uses vault UTF-8 Markdown upload. Before enabling Photon imports, verify authenticated download behavior, content limits, expected source event shape, and owner editing focus; never fetch an arbitrary model-supplied URL.
+The REST specification exposes authenticated attachment metadata and content endpoints, but attachment import is a later extension. V1 ignores attachment events and uses UTF-8 Markdown note upload. Before enabling Photon imports, verify authenticated download behavior, content limits, expected source event shape, and owner editing focus; never fetch an arbitrary model-supplied URL.
 
 Pending live checklist: configure an HTTPS destination with the pinned payload version and `message.received`; securely configure its one-time signing secret; confirm two actual participant assignments and destinations; record signed inbound and outbound delivery evidence; verify post-assignment eligibility, provider idempotency scope/TTL, and redelivery window. All live writes and smoke tests require the explicitly requested milestone. Passing mocked tests is not proof of these provider behaviors.

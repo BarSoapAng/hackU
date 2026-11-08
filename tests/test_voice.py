@@ -70,7 +70,7 @@ async def test_admission_dedup_assignment_and_read_receipt(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('later', ['What can it do?', 'help', '/projects'])
+@pytest.mark.parametrize('later', ['What can it do?', 'help', '/sprouts'])
 async def test_voice_reserves_order_before_later_text(monkeypatch, later):
     env = await environment()
     env.worker.transcriber = object()
@@ -119,7 +119,7 @@ async def test_transcript_recovery_skips_asr_and_ambiguous_send(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('spoken', ['help', 'open my vault'])
+@pytest.mark.parametrize('spoken', ['help', 'open my notes'])
 async def test_spoken_commands_share_original_turn(monkeypatch, spoken):
     env = await environment()
     job, _, _ = await create_project(env)
@@ -133,7 +133,7 @@ async def test_spoken_commands_share_original_turn(monkeypatch, spoken):
     assert len(state['jobs']) == 2 and state['jobs']['voice']['status'] == 'completed'
     assert not env.models.builder.called
     body = env.service.keys.decrypt(state['outbox']['voice']['payload'], 'outbox:voice')['text']
-    assert ('You can send me a voice note, too.' if spoken == 'help' else '/vault#') in body
+    assert ('You can send me a voice note, too.' if spoken == 'help' else '/notes#') in body
 
 
 @pytest.mark.asyncio
@@ -143,7 +143,7 @@ async def test_spoken_builder_request_executes_tools(monkeypatch):
     mock_audio(monkeypatch)
     env.models.builder.side_effect = [
         {'text': '', 'tool_calls': [{'id': 'call', 'name': 'create_project', 'arguments': {'name': 'Bakery'}}]},
-        {'text': 'Your bakery agent is ready.', 'tool_calls': []},
+        {'text': 'Your bakery Sprout is ready.', 'tool_calls': []},
     ]
     await env.service.admit(voice(env))
     await env.worker.run_job(await env.worker.claim('turn'))
@@ -251,7 +251,7 @@ async def test_waiting_voice_does_not_claim_slots_needed_for_text():
     await env.service.admit(replace(voice(env, 'guest-voice'), phone='+12045550102', destination='+16285550102'))
     await env.service.store.transaction(lambda s: s['assignments'].update({'+12045550103': {
         'id': 'third', 'phone': '+12045550103', 'destination': '+16285550103', 'created': env.clock.now - 60}}))
-    await env.service.admit(replace(inbound(env, 'text', 'Build an agent'), phone='+12045550103', destination='+16285550103'))
+    await env.service.admit(replace(inbound(env, 'text', 'Grow a Sprout'), phone='+12045550103', destination='+16285550103'))
     assert (await env.worker.claim('turn'))['id'] == 'voice'
     assert (await env.worker.claim('turn'))['id'] == 'text'
     assert await env.worker.claim('turn') is None

@@ -99,7 +99,7 @@ test('account navigation returns to users after opening a project', async () => 
   vi.stubGlobal('fetch', fetch)
   render(<App />)
   fireEvent.click(await screen.findByRole('button', { name: 'View account +15550000001' }))
-  fireEvent.click(await screen.findByRole('button', { name: 'Explore project' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Explore Sprout' }))
   await screen.findByRole('heading', { name: 'Study assistant' })
   fireEvent.click(screen.getByRole('button', { name: 'All users' }))
   expect(await screen.findByRole('button', { name: 'View account +15550000001' })).toBeTruthy()
