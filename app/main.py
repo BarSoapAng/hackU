@@ -275,18 +275,18 @@ def production_app() -> FastAPI:
     from app.database import SpacetimeStore
     from app.models import ModelGateway
     from app.photon import PhotonClient
-    from app.retrieval import HaystackEmbeddings
+    from app.retrieval import NemotronEmbeddings
     from app.security import Keyring
     from app.service import Service
     from app.worker import Worker
     from app.voice import Transcriber
 
     settings = Settings.from_env()
+    embeddings = NemotronEmbeddings(settings.embedding_api_key, base_url=settings.embedding_base_url)
     store = SpacetimeStore(settings.database_url, settings.database_name, settings.database_token)
     models = ModelGateway.from_credentials(nemotron_base_url=settings.nemotron_base_url,
         nemotron_api_key=settings.nemotron_api_key, openai_api_key=settings.openai_api_key,
         builder_model=settings.nemotron_model, project_model=settings.project_model)
-    embeddings = HaystackEmbeddings(settings.openai_api_key)
     http = httpx.AsyncClient()
     photon = PhotonClient(http, settings.photon_project_id, settings.photon_api_key)
     service = Service(store, Keyring.from_json(settings.encryption_keys, settings.active_key), settings.public_url, Limits.from_env())

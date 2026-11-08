@@ -8,7 +8,7 @@
 
 Inputs use a conservative UTF-8 byte bound, plus message/schema framing allowances, within 12,000 tokens. This avoids using an OpenAI tokenizer to estimate Nemotron input. Earlier Hypha turns are removed as complete message/tool groups. Sprout history and retrieved context are trimmed before the latest question; an oversized current request is rejected before generation.
 
-`app/retrieval.py` uses one deterministic splitter for saving quotas and indexing: approximately 300 words with 50-word overlap, separate Markdown headings, and at most 8,000 `cl100k_base` tokens per chunk. Note-name and heading metadata survive retrieval. Vectors are tagged with `text-embedding-3-small`, configured dimensions (default 1,536), and `markdown-v1`; incompatible vectors are excluded from cosine scoring. The caller must supply only the selected Sprout’s current, ready note versions and recheck those versions before dispatch.
+`app/retrieval.py` uses one deterministic splitter for saving quotas and indexing: approximately 300 words with 50-word overlap, separate Markdown headings, and at most 8,000 UTF-8 bytes per chunk (a conservative Nemotron token bound). Note-name and heading metadata survive retrieval. Vectors are tagged with `nvidia/Nemotron-3-Embed-1B-BF16`, configured dimensions (default 1,536), and `markdown-bytes-v2`; incompatible vectors are excluded from cosine scoring. The caller must supply only the selected Sprout’s current, ready note versions and recheck those versions before dispatch.
 
 Ranking is descending cosine similarity between the current question embedding and
 each eligible chunk embedding; the highest five are passed toward answer generation.
@@ -37,15 +37,34 @@ message without losing content. Separators never reach Photon; every bubble
 still passes through plain-text formatting. Only delivered bubbles enter future
 model context. Each factual bubble should carry its own source citation.
 
-Haystack's `OpenAIDocumentEmbedder` and `OpenAITextEmbedder` both use the OpenAI endpoint and the same dimensions. Document calls accept at most 32 chunks, so each adapter call makes one bounded embedding batch. The worker reserves each batch's tokens first. Query embedding tokens also count toward the deployment budget. Missing, nonfinite, zero, or wrong-dimension embeddings cannot be marked ready. Haystack's raw provider-error logger is disabled to avoid logging document bodies from error responses. Set `HAYSTACK_TELEMETRY_ENABLED=false` in the runtime environment. Tokenizer data must be cached during dependency preparation so indexing does not depend on a first-request download.
+`NemotronEmbeddings` sends authenticated requests only to `EMBEDDING_BASE_URL`,
+the private Brev service. It uses the existing compatible SDK as a transport;
+it does not call OpenAI for embeddings. `input_type=passage` indexes notes and
+`input_type=query` embeds questions. The service adds the model's corresponding
+`passage: ` / `query: ` prefixes, performs mean pooling through Sentence Transformers,
+and normalizes the requested vector dimensions after truncation. Inputs are never
+silently truncated. Requests contain at most 32 chunks; the worker batches 16.
+SDK retries are disabled, with budgets/retries owned by the worker. Actual tokenizer
+usage is recorded by the service; reservation budgets use UTF-8 byte upper bounds.
+Responses must contain exactly one finite, nonzero vector of the expected dimension
+per input, with unique indices; shuffled results are reordered before storage.
 
-Pinned and tested Python dependencies: `openai==2.15.0`, `haystack-ai==3.4.1`, `tiktoken==0.14.0`.
+On startup, ready notes with a different model, dimensions, or preprocessing version
+get a new version and indexing job. Their previous vectors are removed atomically;
+old queued answers fail the existing source-version checks. Pending notes are indexed
+with the new splitter, and their chunk counts are updated on completion. Repeating
+startup does not recreate the migration jobs.
+
+The self-hosted service and model revisions are pinned in
+[`deploy/embeddings`](../deploy/embeddings/README.md). The backend needs its own
+`EMBEDDING_API_KEY`; it must not reuse a public-provider credential.
 
 Authoritative contracts consulted:
 
 - [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) and [reasoning settings](https://developers.openai.com/api/docs/guides/reasoning).
 - [Responses creation](https://developers.openai.com/api/reference/resources/responses/methods/create).
-- [Embedding model](https://developers.openai.com/api/docs/models/text-embedding-3-small).
-- [Haystack document embedder](https://docs.haystack.deepset.ai/docs/openaidocumentembedder) and [query embedder](https://docs.haystack.deepset.ai/docs/openaitextembedder); constructor behavior was checked against the installed pinned package.
+- [NVIDIA Nemotron embedding model and local inference](https://huggingface.co/nvidia/Nemotron-3-Embed-1B-BF16).
 
 The offline implementation was verified with mocks and local transports. Separate live Nemotron verification recorded in [the deployment README](../deploy/nemotron/README.md) established the non-thinking, temperature-zero tool-call contract used here. At the user's subsequent live-setup request, the application adapters passed a Nemotron tool call, a GPT-5.6 Luna answer with low reasoning, and actual document/query embeddings. A real inbound iMessage then completed Sprout creation and notes-link issuance through Nemotron, with Photon confirming the reply delivered. Maximum-notes retrieval timing, representative grounding/abstention, dashboard upload/Q&A, and second-participant delivery remain to be verified.
+
+The live checks described above used the previous OpenAI embedding adapter. They do not establish deployment or retrieval quality for the Nemotron embedding replacement.

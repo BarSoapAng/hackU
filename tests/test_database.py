@@ -252,6 +252,9 @@ def test_actual_journey_snapshots_pass_the_database_reducer_policy():
         await env.worker.dispatch('question')
         await env.service.save_file(token, 'guide.md', '# Guide\nNew source', file['id'], 1)
         await env.worker.index(await env.worker.claim('index'))
+        # Replacing the embedding model must preserve the reducer's file/job invariants.
+        env.embeddings.model = 'nvidia/Nemotron-3-Embed-1B-BF16'
+        await env.worker.recover()
         env.clock.now += 31 * 86400
         await env.worker.cleanup()
         return transitions

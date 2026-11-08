@@ -14,7 +14,13 @@ Keep the private `.env` on the server, with these deployment-specific values:
 NEMOTRON_BASE_URL=http://127.0.0.1:8000/v1
 TRANSCRIPTION_URL=http://127.0.0.1:8002
 FFMPEG_BINARY=ffmpeg
+EMBEDDING_BASE_URL=http://127.0.0.1:8004/v1
+EMBEDDING_API_KEY=<private-embedding-service-secret>
 ```
+
+For a separate embedding VM, port 8004 must be an authenticated private tunnel
+from this backend host to the embedding service, independent of the laptop. See
+[embedding deployment](../embeddings/README.md). Do not expose plain HTTP publicly.
 
 Preserve `PUBLIC_URL`, database/provider credentials, `ENCRYPTION_KEYS`, and
 `ACTIVE_KEY`. Never commit `.env` or the ngrok configuration.

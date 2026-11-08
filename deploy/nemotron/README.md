@@ -1,6 +1,6 @@
 # Nemotron on Brev
 
-Target instance: `secure-amethyst-ferret`, one NVIDIA L40S, reached using Brev from WSL. The builder uses Nemotron 3.5 Lightning 30B with four-bit weights through Marlin on Ada; OpenAI project answers and embeddings remain separate.
+Target instance: `secure-amethyst-ferret`, one NVIDIA L40S, reached using Brev from WSL. The builder uses Nemotron 3.5 Lightning 30B with four-bit weights through Marlin on Ada; OpenAI project answers and the dedicated [Nemotron embedding service](../embeddings/README.md) remain separate.
 
 The configuration adapts NVIDIA's [Ada serving recipe](https://github.com/NVIDIA-AI-Blueprints/nemotron-voice-agent/blob/main/docker/docker-compose.nemotron35-lightning.yaml). It pins the checkpoint revision and vLLM version, limits total context to 16,384 tokens, and permits two sequences. Live inference verification passed on 2026-11-07 (America/Winnipeg).
 

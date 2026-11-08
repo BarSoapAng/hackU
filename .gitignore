@@ -3,6 +3,7 @@
 !.env.example
 deploy/nemotron/cache/
 deploy/speech/cache/
+deploy/embeddings/cache/
 .venv/
 __pycache__/
 .pytest_cache/

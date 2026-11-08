@@ -1,0 +1,32 @@
+name: hypha-embeddings
+services:
+  embeddings:
+    build: .
+    env_file: .env
+    ports:
+      - "127.0.0.1:8004:8004"
+    volumes:
+      - ./cache:/cache
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cpus: 4
+    mem_limit: 12g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8004/readyz',headers={'Authorization':'Bearer '+os.environ['EMBEDDING_API_KEY']}),timeout=5)"]
+      interval: 30s
+      timeout: 6s
+      start_period: 10m
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'

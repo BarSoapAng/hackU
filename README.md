@@ -28,8 +28,8 @@ npm run typecheck
 npm test
 ```
 
-The tokenizer may download its public vocabulary on first use. Haystack telemetry
-is disabled in the test suite and container. Unit and integration tests use
+Embedding input budgets use a conservative UTF-8 byte bound; no tokenizer download
+is needed in the backend. Unit and integration tests use
 in-process handlers and mocked transports, including the two-user journey.
 There is no development database or in-memory fallback in production.
 
@@ -37,7 +37,7 @@ There is no development database or in-memory fallback in production.
 
 Copy `.env.example` to an untracked `.env`. Export its values through your secret
 manager or use the local runner below when running outside Compose. Supply separate
-Nemotron and OpenAI credentials. The database runtime token must belong to the
+Nemotron chat, private embedding-service, and OpenAI answer credentials. The database runtime token must belong to the
 identity configured in the module, independently of the CLI's management login.
 Use the Photon webhook secret for payload version `2026-07-01`.
 
@@ -71,6 +71,16 @@ Do not log credentials, tokens, request bodies, or private editing URL fragments
 Defaults are in [app/config.py](app/config.py). `LIMIT_<UPPERCASE_FIELD>` can lower
 a limit; increasing the starting ceilings requires reviewing database policy
 and live capacity. `LIMIT_DEDUP_DAYS` can be increased and must be at least 30.
+
+## Nemotron embeddings
+
+Notes and questions use self-hosted `nvidia/Nemotron-3-Embed-1B-BF16` on Brev.
+Set `EMBEDDING_BASE_URL` to the private service (default `http://127.0.0.1:8004/v1`)
+and `EMBEDDING_API_KEY` to its own bearer secret. This is not an NVIDIA hosted API key.
+See [embedding deployment](deploy/embeddings/README.md) for the dedicated GPU service.
+The model runs on Brev; SpacetimeDB persists vectors and Python ranks them.
+OpenAI remains the answer generator. Startup queues old, ready embeddings for
+reindexing and invalidates answers based on their previous source versions.
 
 ## Runtime and deployment
 

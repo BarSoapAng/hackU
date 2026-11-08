@@ -31,10 +31,11 @@ async def database():
 
 async def models():
     from app.models import ModelGateway
-    from app.retrieval import HaystackEmbeddings
+    from app.retrieval import NemotronEmbeddings
     gateway = ModelGateway.from_credentials(nemotron_base_url=os.environ['NEMOTRON_BASE_URL'],
         nemotron_api_key=os.environ['NEMOTRON_API_KEY'], openai_api_key=os.environ['OPENAI_API_KEY'])
-    embeddings = HaystackEmbeddings(os.environ['OPENAI_API_KEY'])
+    embeddings = NemotronEmbeddings(os.environ['EMBEDDING_API_KEY'],
+        base_url=os.environ.get('EMBEDDING_BASE_URL', 'http://127.0.0.1:8004/v1'))
     try:
         result = await gateway.builder([{'role': 'user', 'content': 'Call create_project to create a project named Demo. Do not answer without the tool call.'}],
             [{'type': 'function', 'function': {'name': 'create_project', 'description': 'Create a project',
@@ -48,7 +49,7 @@ async def models():
         answer = await gateway.answer('Be concise.', [], chunks, 'When does the library open?')
         if not answer:
             raise RuntimeError('Project model returned no answer')
-        print('PASS Nemotron tool call, requested OpenAI model response at low reasoning, document/query embeddings')
+        print('PASS Nemotron tool call, requested OpenAI model response at low reasoning, Nemotron document/query embeddings')
         print('This transport check does not establish real-answer grounding or two-person Photon delivery.')
     finally:
         await gateway.close()

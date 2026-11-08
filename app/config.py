@@ -48,6 +48,8 @@ class Settings:
     nemotron_api_key: str
     openai_api_key: str
     encryption_keys: str
+    embedding_api_key: str = ''
+    embedding_base_url: str = 'http://127.0.0.1:8004/v1'
     active_key: str = 'v1'
     nemotron_model: str = 'nemotron-builder'
     project_model: str = 'gpt-5.6-luna'

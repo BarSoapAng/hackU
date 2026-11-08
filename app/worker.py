@@ -257,7 +257,7 @@ class Worker:
             await self.service.store.transaction(record_response)
 
     async def answer(self, job):
-        from app.retrieval import cosine_retrieve, token_count
+        from app.retrieval import cosine_retrieve, token_bound
         for attempt in range(2):
             state = await self.service.snapshot()
             current = check_job(state, job['id'], job['claim'], self.service.clock())
@@ -273,7 +273,7 @@ class Worker:
                         if has_notes else 'I’m still waiting for my first notes, so I don’t know that one yet. '
                         'Once my owner adds them, we can get chatting.'))
                 return
-            query_tokens = token_count(current['question'])
+            query_tokens = token_bound(current['question'])
             if not current['question'].strip() or query_tokens > 8000:
                 raise DomainError('Please send a shorter, nonempty question.')
             await self.reserve_embeddings(job, query_tokens)
@@ -293,17 +293,20 @@ class Worker:
                     await self.service.complete(job['id'], job['claim'], 'Sources are updating. Please ask again shortly.')
 
     async def index(self, job):
-        from app.retrieval import split_markdown, token_count
+        from app.retrieval import split_markdown, token_bound
         state = await self.service.snapshot()
         check_job(state, job['id'], job['claim'], self.service.clock())
         file = state['files'].get(job['file'])
         if not file or file['version'] != job['version']:
             raise DomainError('Indexing was superseded.', 409)
         chunks = split_markdown(file['name'], file['content'])
+        if len(chunks) + sum(f['chunk_count'] for f in state['files'].values()
+                if f['project'] == file['project'] and f['id'] != file['id']) > self.service.limits.chunks_per_project:
+            raise DomainError('Sprout notes limit exceeded. Shorten a note before indexing again.', 413)
         rows = []
         for offset in range(0, len(chunks), 16):
             batch = chunks[offset:offset + 16]
-            await self.reserve_embeddings(job, sum(token_count(c['text']) for c in batch))
+            await self.reserve_embeddings(job, sum(token_bound(c['text']) for c in batch))
             enriched = await self.embeddings.embed_chunks(batch)
             rows.extend({**chunk, 'file_id': file['id'], 'version': file['version']} for chunk in enriched)
         now = self.service.clock()
@@ -313,7 +316,7 @@ class Worker:
             if not latest or latest['version'] != job['version']:
                 raise DomainError('Indexing was superseded.', 409)
             state['chunks'][file['id']] = rows
-            latest['status'] = 'ready'
+            latest.update(status='ready', chunk_count=len(rows))
             current.update(status='completed', completed=now)
         await self.service.store.transaction(commit)
 
@@ -440,9 +443,24 @@ class Worker:
         """Only after stopping the previous process. An interrupted submit may have sent."""
         from app.voice import clean_audio
         clean_audio()
+        now = self.service.clock()
         def recover(state):
             initialize(state)
             recover_requests(state)
+            for file in state['files'].values():
+                chunks = state['chunks'].get(file['id'], [])
+                if file['status'] != 'ready' or not any(
+                    (c.get('embedding_model'), c.get('dimensions'), c.get('preprocessing_version')) !=
+                    (self.embeddings.model, self.embeddings.dimensions, self.embeddings.preprocessing_version)
+                    for c in chunks):
+                    continue
+                # Bump the source version so pending answers from old vectors cannot be sent.
+                file.update(version=file['version'] + 1, status='pending')
+                state['chunks'].pop(file['id'], None)
+                key = f'index:{file["id"]}:{file["version"]}'
+                state['jobs'][key] = {'id': key, 'kind': 'index', 'file': file['id'],
+                    'project': file['project'], 'version': file['version'], 'created': now,
+                    'deadline': now + 7 * 86400, 'status': 'queued', 'attempts': 0}
             for outbox in state['outbox'].values():
                 if outbox['status'] == 'submitting':
                     outbox['status'] = 'unknown'

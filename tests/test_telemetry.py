@@ -7,7 +7,7 @@ import pytest
 
 from app.database import DatabaseUnavailable
 from app.models import ModelGateway, ProviderError
-from app.retrieval import HaystackEmbeddings
+from app.retrieval import NemotronEmbeddings
 from app.service import DomainError
 from app.telemetry import request_context, tracked_call
 from test_models import clients, response
@@ -203,11 +203,12 @@ async def test_embedding_adapters_record_provider_metadata_and_project_owner():
         'id': 'index', 'kind': 'index', 'project': project['id'], 'status': 'running',
         'claim': 'index-claim', 'lease': env.clock.now + 60, 'deadline': env.clock.now + 120,
         'attempts': 1, 'created': env.clock.now}}))
-    embedder = HaystackEmbeddings('test-key', dimensions=2)
-    embedder.documents.run_async = AsyncMock(return_value={
-        'documents': [SimpleNamespace(embedding=[1, 0])], 'meta': {'usage': {'prompt_tokens': 8, 'total_tokens': 8}}})
-    embedder.queries.run_async = AsyncMock(return_value={
-        'embedding': [0, 1], 'meta': {'usage': {'prompt_tokens': 3, 'total_tokens': 3}}})
+    embedder = NemotronEmbeddings('test-key', dimensions=128)
+    embedder.client.embeddings.create = AsyncMock(side_effect=[
+        SimpleNamespace(data=[SimpleNamespace(index=0, embedding=[1.0] * 128)],
+                        usage={'prompt_tokens': 8, 'total_tokens': 8}),
+        SimpleNamespace(data=[SimpleNamespace(index=0, embedding=[1.0] * 128)],
+                        usage={'prompt_tokens': 3, 'total_tokens': 3})])
     token = request_context.set((env.service, 'index', 'index-claim'))
     try:
         await embedder.embed_chunks([{'text': 'A small document'}])
@@ -217,6 +218,7 @@ async def test_embedding_adapters_record_provider_metadata_and_project_owner():
         await embedder.close()
     rows = (await env.service.snapshot())['jobs']['index']['requests']
     assert [r['input_tokens'] for r in rows] == [8, 3]
+    assert all(r['provider'] == 'nvidia' and r['model'] == embedder.model for r in rows)
     assert all(r['account_id'] == job['user'] and r['project_id'] == project['id'] for r in rows)
     assert all(r['participant_id'] is None and r['conversation_id'] is None for r in rows)
 
