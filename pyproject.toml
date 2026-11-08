@@ -6,6 +6,7 @@ dependencies = [
   "fastapi==0.162.2",
   "uvicorn==0.54.0",
   "httpx==0.28.1",
+  "websockets==15.0.1",
   "cryptography==50.0.2",
   "openai==2.15.0",
   "haystack-ai==3.4.1",

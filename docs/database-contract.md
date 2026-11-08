@@ -13,8 +13,8 @@ private SQL denial (403), using the configured backend runtime identity.
 
 ## Boundary and transaction contract
 
-`app_state` is private. The backend calls `read_state` and `commit_state` over
-authenticated HTTP; the browser never receives database credentials. All
+`app_state` is private. The backend calls `read_state` over an authenticated
+WebSocket and `commit_state` over authenticated HTTP; the browser never receives database credentials. All
 connections and exported operations compare the authenticated sender identity
 with the required `BACKEND_IDENTITY` module environment value. There is no
 first-caller registration or publicly readable application table. A database
@@ -30,10 +30,27 @@ Environment variables are declared in the module and configured through the
 
 The Python adapter uses these exact calls with `confirmed=true`:
 
-- `POST /v1/database/{database}/call/read_state`, body `[]`: returns a JSON
-  string containing `{"revision":"0","state":{}}`.
+- `GET /v1/database/{database}/subscribe?confirmed=true&compression=None`,
+  upgraded with subprotocol `v1.json.spacetimedb` and the runtime bearer header.
+  It sends `CallProcedure` for `read_state`, arguments `"[]"`, flags zero and
+  a matching request ID. `ProcedureResult.status.Returned` encodes a JSON string
+  containing `{"revision":"0","state":{}}`.
 - `POST /v1/database/{database}/call/commit_state`, body `[expected_revision,
   serialized_state]`: commits only at the expected revision and increments it.
+
+Reads reuse one connection and serialize request/response pairs. A failed,
+cancelled, malformed, or mismatched read discards that connection; the next read
+connects afresh. Reads have a 15-second deadline. Like the existing HTTP adapter,
+they accept the complete snapshot without an additional transport size ceiling.
+Redirects are refused so credentials cannot be forwarded to another host.
+No tables are subscribed to or exposed publicly.
+
+SpacetimeDB 2.14.1's HTTP `/call` handler tries a reducer before a procedure.
+Consequently, HTTP `read_state` succeeds but emits a misleading nonexistent
+reducer error on every read. The explicit WebSocket procedure call avoids this
+lookup and its log spam. Regenerating bindings or republishing the module is
+unnecessary. The HTTP read path remains available for the explicit integration
+gate's unauthorized-access checks; normal backend reads never use it.
 
 The read procedure uses one `withTx` transaction. The reducer rejects stale
 revisions, malformed state, and invalid domain proposals without mutation. Missing singleton state reads

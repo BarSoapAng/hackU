@@ -15,6 +15,8 @@ from typing import Any, TypeVar
 from urllib.parse import quote
 
 import httpx
+from websockets.asyncio.client import connect
+from websockets.exceptions import WebSocketException
 
 
 T = TypeVar('T')
@@ -22,6 +24,12 @@ T = TypeVar('T')
 
 class DatabaseUnavailable(RuntimeError):
     pass
+
+
+class DirectConnect(connect):
+    def process_redirect(self, exc):
+        # Never forward the runtime bearer token to a redirect destination.
+        return exc
 
 
 class StateStore:
@@ -81,13 +89,30 @@ class SpacetimeStore(StateStore):
         if url.username or url.password or url.query or url.fragment:
             raise ValueError('SpacetimeDB base URL must not contain credentials or query parameters.')
         self._url = f'{base_url.rstrip("/")}/v1/database/{quote(database, safe="")}/call'
+        self._read_url = str(httpx.URL(self._url.removesuffix('/call') + '/subscribe').copy_with(
+            scheme='wss' if url.scheme == 'https' else 'ws',
+            query=b'confirmed=true&compression=None',
+        ))
         self._token = token
         self._client = client or httpx.AsyncClient(timeout=15, follow_redirects=False)
         self._owns_client = client is None
+        self._reader = None
+        self._read_lock = asyncio.Lock()
+        self._request_id = 0
 
     async def aclose(self) -> None:
+        async with self._read_lock:
+            await self._close_reader()
         if self._owns_client:
             await self._client.aclose()
+
+    async def _close_reader(self) -> None:
+        reader, self._reader = self._reader, None
+        if reader is not None:
+            try:
+                await reader.close()
+            except (OSError, WebSocketException):
+                pass
 
     async def _call(self, method: str, arguments: list[Any]) -> httpx.Response:
         try:
@@ -108,17 +133,40 @@ class SpacetimeStore(StateStore):
         return response
 
     async def read(self) -> tuple[int, dict[str, Any]]:
-        response = await self._call('read_state', [])
-        try:
-            # A procedure returning t.string() is a JSON string containing JSON.
-            snapshot = json.loads(response.json())
-            revision = int(snapshot['revision'])
-            state = snapshot['state']
-            if revision < 0 or not isinstance(state, dict):
-                raise ValueError('invalid snapshot')
-            return revision, state
-        except (ValueError, TypeError, KeyError) as exc:
-            raise DatabaseUnavailable('Database returned an invalid snapshot.') from exc
+        # HTTP /call tries a reducer first, logging a false error for procedures.
+        # One in-flight read per connection keeps responses paired with requests.
+        async with self._read_lock:
+            try:
+                async with asyncio.timeout(15):
+                    if self._reader is None:
+                        self._reader = await DirectConnect(
+                            self._read_url, subprotocols=['v1.json.spacetimedb'],
+                            additional_headers={'Authorization': f'Bearer {self._token}'},
+                            open_timeout=10, close_timeout=2, max_size=None,
+                        )
+                        if 'IdentityToken' not in json.loads(await self._reader.recv()):
+                            raise ValueError('invalid handshake')
+                    self._request_id = (self._request_id + 1) % 2**32
+                    await self._reader.send(json.dumps({'CallProcedure': {
+                        'procedure': 'read_state', 'args': '[]',
+                        'request_id': self._request_id, 'flags': 0,
+                    }}))
+                    result = json.loads(await self._reader.recv())['ProcedureResult']
+                    if result['request_id'] != self._request_id:
+                        raise ValueError('unexpected response')
+                    # The wire return value encodes a t.string() containing JSON.
+                    snapshot = json.loads(json.loads(result['status']['Returned']))
+                    revision = int(snapshot['revision'])
+                    state = snapshot['state']
+                    if revision < 0 or not isinstance(state, dict):
+                        raise ValueError('invalid snapshot')
+                    return revision, state
+            except asyncio.CancelledError:
+                await self._close_reader()
+                raise
+            except (OSError, TimeoutError, WebSocketException, ValueError, TypeError, KeyError) as exc:
+                await self._close_reader()
+                raise DatabaseUnavailable('Database read failed or returned an invalid snapshot.') from exc
 
     async def compare_and_swap(self, expected: int, state: dict[str, Any]) -> bool:
         value = json.dumps(state, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
