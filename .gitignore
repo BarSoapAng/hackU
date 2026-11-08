@@ -2,3 +2,8 @@
 .env.*
 !.env.example
 deploy/nemotron/cache/
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.egg-info/
