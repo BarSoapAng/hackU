@@ -1,8 +1,24 @@
 # Internal dashboard
 
-The dashboard is a local, read-only development tool. An account owns Sprouts;
+The dashboard is a read-only development tool. An account owns Sprouts;
 a participant messages a Sprout. The same user can be both. “View as”
 changes the inspection scope, not the user's identity or messaging state.
+
+## Hosted use
+
+The user explicitly requested unauthenticated cloud access on 2026-11-08.
+Open `/dashboard/` on the existing public application hostname. Anyone with
+the URL can view phone numbers, retained conversations, activity, and costs.
+The API still excludes credentials and editing capabilities and rejects writes.
+
+The hosted `app.dashboard:public_app` factory serves the compiled frontend and
+read-only API on Brev loopback port 8010. A gateway on port 8011 routes
+`/dashboard/` and `/api/internal/` to it, and other paths to the existing backend
+on port 8001. ngrok targets the gateway. The dashboard runs no messaging worker.
+The local factory below retains its loopback-only restrictions.
+
+Deploy using `deploy/brev/dashboard.compose.yaml`; see
+[the hosted dashboard guide](../deploy/brev/dashboard.md).
 
 ## Local use
 
@@ -25,7 +41,8 @@ npm run dev
 Open `http://127.0.0.1:5173`. These are operator startup instructions; creating
 this dashboard does not start either process. The local API has no worker,
 webhook, Sprout editing, notes editing, or message sending routes. It is separate
-from the public application and must not be exposed through a tunnel or proxy.
+from the public application. Use the explicit `public_app` factory for the
+hosted deployment rather than forwarding this local-only factory.
 
 ## Browsing
 

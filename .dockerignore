@@ -3,6 +3,8 @@
 .env
 .env.*
 db/node_modules
+dashboard/node_modules
+dashboard/dist
 __pycache__
 .pytest_cache
 deploy/nemotron/cache

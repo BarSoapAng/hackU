@@ -9,6 +9,17 @@ the existing credentials to `secure-amethyst-ferret`. The backend now runs in
 its ngrok process were stopped before the cloud worker started. The original
 public hostname, Photon webhook, database, and encryption keys were preserved.
 
+The user subsequently requested the dashboard on the same public hostname,
+explicitly without authentication. `/dashboard/` and `/api/internal/` now route
+through a gateway on loopback port 8011 to the separate dashboard on port 8010;
+other routes still reach the messaging backend on port 8001. ngrok targets the
+gateway. The dashboard deployment lives in `~/hypha-dashboard`, runs no messaging
+worker, and exposes phone numbers and conversation history to anyone with the
+URL. See [dashboard deployment](../deploy/brev/dashboard.md). Public page/assets,
+overview/accounts/conversations/activity/costs, write rejection, and existing
+backend routes passed checks. The earlier internal-API 404 below describes the
+initial backend-only deployment, before this explicit exposure.
+
 The backend binds to `127.0.0.1:8001` using Linux host networking. It reaches
 Nemotron directly on port 8000 and speech directly on port 8002. The ngrok
 system service supplies HTTPS; Docker and ngrok are enabled at boot, and all

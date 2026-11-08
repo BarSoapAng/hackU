@@ -1,4 +1,4 @@
-"""Local-only, read-only projections of the private application snapshot."""
+"""Read-only projections of the application snapshot; local access by default."""
 
 import asyncio
 import ipaddress
@@ -8,11 +8,13 @@ import re
 import time
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.database import DatabaseUnavailable, SpacetimeStore
 from app.dashboard_costs import CostConfigurationError, CostDataError, cost_report, estimate_request, load_config
@@ -224,7 +226,7 @@ class DashboardData:
                 'requests': requests, 'usage_recorded': bool(requests)}
 
 
-def create_dashboard_app(store, *, clock=time.time, cache_seconds=2, costs_config=None):
+def create_dashboard_app(store, *, clock=time.time, cache_seconds=2, costs_config=None, local_only=True):
     """Separate app factory: no messaging workers, credentials, or write routes."""
     cached = None
     cached_at = 0
@@ -258,7 +260,7 @@ def create_dashboard_app(store, *, clock=time.time, cache_seconds=2, costs_confi
         # Refuse forwarded requests; the local UI proxy preserves Host and adds no forwarding headers.
         if any(name in request.headers for name in ('forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto')):
             local = False
-        if not local:
+        if local_only and not local:
             response = JSONResponse({'detail': 'This dashboard is available locally only.'}, status_code=403)
         elif request.method != 'GET':
             response = JSONResponse({'detail': 'This dashboard is read only.'}, status_code=405,
@@ -391,7 +393,15 @@ def create_dashboard_app(store, *, clock=time.time, cache_seconds=2, costs_confi
     return app
 
 
-def local_app():
+def local_app(*, local_only=True):
     return create_dashboard_app(SpacetimeStore(os.environ['DATABASE_URL'], os.environ['DATABASE_NAME'],
                                               os.environ['DATABASE_TOKEN']),
-                                costs_config=lambda: load_config(os.environ.get('DASHBOARD_COSTS_FILE', '.local/dashboard-costs.json')))
+                                costs_config=lambda: load_config(os.environ.get('DASHBOARD_COSTS_FILE', '.local/dashboard-costs.json')),
+                                local_only=local_only)
+
+
+def public_app():
+    """Explicitly unauthenticated hosted dashboard, without messaging workers."""
+    app = local_app(local_only=False)
+    app.mount('/dashboard', StaticFiles(directory=Path(__file__).with_name('dashboard_static'), html=True))
+    return app

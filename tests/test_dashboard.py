@@ -140,6 +140,21 @@ async def test_local_frontend_origins_and_empty_database(dashboard):
         assert (await http.get('/api/internal/users')).json()['items'] == []
 
 
+async def test_public_dashboard_accepts_proxy_requests_but_remains_read_only(dashboard):
+    _, store, state, now = dashboard
+    before = copy.deepcopy(state)
+    app = create_dashboard_app(store, clock=lambda: now, local_only=False)
+    async with client(app, peer='203.0.113.1', base_url='https://dashboard.example') as http:
+        response = await http.get(conversation_path(conversation='+1001:builder'),
+                                  headers={'X-Forwarded-For': '203.0.113.2'})
+        assert response.status_code == 200
+        assert 'secret-token' not in response.text and 'ciphertext' not in response.text
+        assert response.headers['cache-control'] == 'no-store'
+        assert (await http.post('/api/internal/overview')).status_code == 405
+        assert (await http.get('/webhooks/photon')).status_code == 404
+    assert (await store.read())[1] == before
+
+
 async def test_database_failure_is_sanitized_and_not_cached():
     store = MemoryStore()
     store.read = AsyncMock(side_effect=[DatabaseUnavailable('secret provider details'), (0, {})])

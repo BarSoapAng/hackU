@@ -65,7 +65,7 @@ export function useApi<T>(path: string | null, refresh = 0) {
     if (!path) return
     const controller = new AbortController()
     setResult(previous => ({ path, refresh, data: previous.path === path ? previous.data : undefined, pending: true }))
-    fetch(path, { signal: controller.signal, cache: 'no-store' })
+    fetch(path, { signal: controller.signal, cache: 'no-store', headers: { 'ngrok-skip-browser-warning': '1' } })
       .then(async response => {
         if (!response.ok) throw new DashboardError(response.status === 404
           ? 'This record is no longer available. Refresh or choose another user.'
