@@ -152,6 +152,7 @@ class Worker:
             focus = state['projects'].get(current['focus'])
             messages = [{'role': 'system', 'content':
                 'You are an iMessage project builder. Use only the provided tools. Never claim an operation succeeded without a tool result. '
+                'Past service errors do not apply to this request. Do not claim model limits, tool limits, or outages; the server reports those. '
                 'Replies are sent through Photon as plain text; Markdown is not rendered. Use short paragraphs or • bullets. '
                 'Do not use Markdown headings, emphasis, backticks, code fences, tables, or Markdown links; write URLs directly. '
                 'When introducing yourself or giving instructions or help, offer the option to ask about slash commands or send /help. '

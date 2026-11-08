@@ -117,6 +117,41 @@ def test_full_two_user_journey_preserves_isolation_and_private_link_material():
     asyncio.run(exercise())
 
 
+def test_failed_replies_and_legacy_limit_echoes_do_not_reach_the_next_model_turn():
+    async def exercise():
+        service, worker, nemotron, openai, photon = await setup()
+        nemotron.chat.completions.create.side_effect = RuntimeError('synthetic outage')
+        await service.admit(event('outage', 'hi'))
+        await worker.run_job(await worker.claim('turn'))
+        await worker.dispatch('outage')
+
+        notice = 'This turn reached its model limit. Please send another message.'
+        nemotron.chat.completions.create.side_effect = None
+        nemotron.chat.completions.create.return_value = {'choices': [
+            {'finish_reason': 'stop', 'message': {'content': notice}}]}
+        await service.admit(event('legacy-echo', 'hi'))
+        await worker.run_job(await worker.claim('turn'))
+        await worker.dispatch('legacy-echo')
+
+        nemotron.chat.completions.create.return_value = {'choices': [
+            {'finish_reason': 'stop', 'message': {'content': 'Hello! Ask me about slash commands or send /help.'}}]}
+        await service.admit(event('recovered', 'hi'))
+        await worker.run_job(await worker.claim('turn'))
+        messages = nemotron.chat.completions.create.call_args.kwargs['messages']
+        assert not any(m['role'] == 'assistant' for m in messages)
+        assert messages[-1] == {'role': 'user', 'content': 'hi'}
+        state = await service.snapshot()
+        assert state['jobs']['outage']['status'] == 'failed'
+        assert state['jobs']['legacy-echo']['status'] == 'completed'
+        assert state['jobs']['recovered']['status'] == 'completed'
+        saved = state['conversations']['+15550000001:builder']
+        assert any(m['content'] == notice for m in saved)
+        assert any(m['content'] == 'I could not finish this turn. Please try again.' for m in saved)
+        await worker.dispatch('recovered')
+        assert service.history(await service.snapshot(), state['jobs']['recovered'])[-1]['content'].startswith('Hello!')
+    asyncio.run(exercise())
+
+
 def test_builder_generation_budget_stops_before_fifth_provider_call():
     async def exercise():
         service, worker, nemotron, openai, photon = await setup(Limits(generations_per_turn=2))

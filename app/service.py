@@ -382,7 +382,13 @@ class Service:
     def history(self, state, job):
         conversation = f'{job["user"]}:builder' if job['mode'] == 'builder' else f'{job["user"]}:project:{job["selected"]}'
         return [{'role': m['role'], 'content': m['content']} for m in state['conversations'].get(conversation, [])
-                if m['created'] > self.clock() - 30 * 86400 and (m['role'] != 'assistant' or state['outbox'].get(m.get('outbox'), {}).get('status') == 'sent')][-40:]
+                if m['created'] > self.clock() - 30 * 86400 and (m['role'] != 'assistant' or (
+                    state['outbox'].get(m.get('outbox'), {}).get('status') == 'sent'
+                    and state['jobs'].get(m.get('outbox'), {}).get('status') != 'failed'
+                    # Exclude legacy model echoes too, without deleting the conversation audit.
+                    and m['content'].strip() not in (
+                        'This turn reached its model limit. Please send another message.',
+                        'This turn reached its tool limit. Please send another message.')))][-40:]
 
     def authorize(self, state, token):
         hashed = token_hash(token)
