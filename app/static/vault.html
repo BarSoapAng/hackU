@@ -1,0 +1,135 @@
+<!-- Retained for running servers that still load this template after the notes rename. -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Sprout notes · Hypha</title>
+  <style nonce="__NONCE__">
+    :root{font-family:system-ui,sans-serif;color:#17332b;background:#f5f7f4;color-scheme:light}
+    *{box-sizing:border-box}body{margin:0}main{max-width:1060px;margin:auto;padding:24px 18px}
+    header{margin-bottom:24px}h1{font-size:28px;letter-spacing:-1px;margin:0 0 8px}p{line-height:1.5;margin:8px 0}
+    .muted{color:#53675e;font-size:14px}.layout{display:grid;grid-template-columns:260px 1fr;gap:24px}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}button,.import{border:1px solid #b8c9bf;border-radius:8px;background:white;color:#17332b;padding:10px 14px;font:inherit;cursor:pointer}
+    button:disabled{opacity:.5;cursor:default}.primary{background:#24634b;color:white;border-color:#24634b}.danger{color:#8b2828}
+    label{display:block;font-size:14px;font-weight:600;margin-bottom:8px}input[type=text],textarea{width:100%;border:1px solid #b8c9bf;border-radius:8px;background:white;color:#17332b;padding:12px;font:inherit}
+    textarea{min-height:50vh;resize:vertical;font-family:ui-monospace,monospace;font-size:14px;line-height:1.55;margin-bottom:12px}
+    input[type=text]{margin-bottom:16px}ul{list-style:none;padding:0;margin:0}li{margin:8px 0}li button{width:100%;text-align:left;overflow-wrap:anywhere}
+    li button[aria-current=true]{border-color:#24634b;background:#e6efe8}.filename{display:block}.state{font-size:12px;color:#53675e}
+    #message{min-height:24px;margin-bottom:16px;overflow-wrap:anywhere}#message[data-error=true]{color:#8b2828}#empty{padding:32px 16px;text-align:center;border:1px dashed #b8c9bf;border-radius:12px}
+    .hidden{display:none!important}:focus-visible{outline:3px solid #3f896b;outline-offset:3px}
+    @media(max-width:680px){main{padding:20px 14px}.layout{grid-template-columns:1fr;gap:16px}#files{display:flex;gap:8px;overflow-x:auto}li{min-width:160px;max-width:230px}textarea{min-height:45vh}}
+  </style>
+</head>
+<body>
+<main>
+  <header><h1>Sprout notes 🐿️</h1><p class="muted">Add notes here and your Sprout can use them once they’re ready.</p></header>
+  <p id="message" role="status" aria-live="polite">Opening your Sprout…</p>
+  <div id="workspace" class="layout hidden">
+    <aside aria-label="Notes">
+      <div class="toolbar"><button id="create">New note</button><button id="import">Import note</button><button id="refresh">Refresh</button><input id="upload" type="file" accept=".md,text/markdown" class="hidden"></div>
+      <p id="file-count" class="muted"></p><ul id="files"></ul>
+    </aside>
+    <section aria-label="Note editor">
+      <p id="empty">Choose a note, create one, or import a Markdown note to begin.</p>
+      <div id="editor" class="hidden">
+        <label for="name">Note name</label><input id="name" type="text" maxlength="120" autocomplete="off" spellcheck="false" placeholder="notes.md">
+        <label for="content">Markdown</label><textarea id="content" spellcheck="false" placeholder="# Your source material"></textarea>
+        <div class="toolbar"><button id="save" class="primary">Save</button><button id="delete" class="danger">Delete note</button></div>
+        <p id="file-status" class="muted"></p>
+      </div>
+    </section>
+  </div>
+</main>
+<script nonce="__NONCE__">
+(() => {
+  let token = location.hash.slice(1);
+  history.replaceState(null, '', location.pathname);
+  let selected = null, files = [], dirty = false, busy = false;
+  const byId = id => document.getElementById(id);
+  function notice(text, error = false) { byId('message').textContent = text; byId('message').dataset.error = error; }
+  function setBusy(value) { busy = value; document.querySelectorAll('button').forEach(button => button.disabled = value); }
+  async function api(path, options = {}) {
+    const response = await fetch('/api/notes' + path, {
+      ...options, cache: 'no-store', credentials: 'omit', redirect: 'error',
+      headers: {'Authorization': 'Bearer ' + token, ...(options.headers || {})}
+    });
+    if (response.status === 401) {
+      token = ''; byId('workspace').classList.add('hidden');
+      throw new Error('This link expired. Send /notes in iMessage for a new editing link.');
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(typeof body.detail === 'string' ? body.detail : 'The request could not be completed.');
+    }
+    return response.status === 204 ? null : response.json();
+  }
+  function json(method, body) { return {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}; }
+  function canLeave() { return !dirty || confirm('Discard your unsaved changes?'); }
+  function renderList() {
+    byId('files').replaceChildren();
+    byId('file-count').textContent = files.length + (files.length === 1 ? ' note' : ' notes');
+    for (const file of files) {
+      const item = document.createElement('li'), button = document.createElement('button');
+      button.setAttribute('aria-current', selected?.id === file.id ? 'true' : 'false');
+      const name = document.createElement('span'), state = document.createElement('span');
+      name.className = 'filename'; name.textContent = file.name;
+      state.className = 'state'; state.textContent = file.status === 'failed' ? 'Indexing failed — save again to retry' : file.status;
+      button.append(name, state); button.addEventListener('click', () => action(async () => {
+        if (canLeave()) open(await api('/' + encodeURIComponent(file.id)));
+      })); item.append(button); byId('files').append(item);
+    }
+  }
+  function open(file) {
+    selected = file; dirty = false;
+    byId('name').value = file.name; byId('content').value = file.content;
+    byId('editor').classList.remove('hidden'); byId('empty').classList.add('hidden');
+    byId('delete').classList.toggle('hidden', !file.id);
+    byId('file-status').textContent = file.id ? 'Version ' + file.version + ' · ' + file.status : 'New note — save to add it to your Sprout.';
+    renderList();
+  }
+  async function refresh() { files = (await api('')).notes; renderList(); }
+  async function action(fn) {
+    if (busy) return;
+    setBusy(true);
+    try { await fn(); } catch (error) { notice(error.message || 'Something went wrong. Try again.', true); }
+    finally { setBusy(false); }
+  }
+  byId('create').onclick = () => { if (canLeave()) open({name: '', content: '', status: 'new'}); };
+  byId('refresh').onclick = () => action(async () => { await refresh(); notice('Note status refreshed. Your unsaved text is preserved.'); });
+  byId('name').oninput = byId('content').oninput = () => { dirty = true; };
+  byId('save').onclick = () => action(async () => {
+    const body = {name: byId('name').value, content: byId('content').value};
+    if (selected.id) body.expected_version = selected.version;
+    const file = await api(selected.id ? '/' + encodeURIComponent(selected.id) : '', json(selected.id ? 'PUT' : 'POST', body));
+    open(file); await refresh(); notice('Saved. Indexing is pending.');
+  });
+  byId('delete').onclick = () => action(async () => {
+    if (!selected.id || !confirm('Delete ' + selected.name + '?')) return;
+    await api('/' + encodeURIComponent(selected.id), json('DELETE', {expected_version: selected.version}));
+    selected = null; dirty = false; byId('editor').classList.add('hidden'); byId('empty').classList.remove('hidden');
+    await refresh(); notice('Note deleted.');
+  });
+  byId('import').onclick = () => { if (canLeave()) byId('upload').click(); };
+  byId('upload').onchange = () => action(async () => {
+    const file = byId('upload').files[0]; byId('upload').value = '';
+    if (!file) return;
+    const existing = files.find(item => item.name.toLowerCase() === file.name.toLowerCase());
+    let result;
+    if (existing) {
+      if (!confirm('Replace ' + existing.name + ' with this import?')) return;
+      const content = new TextDecoder('utf-8', {fatal: true}).decode(await file.arrayBuffer());
+      result = await api('/' + encodeURIComponent(existing.id), json('PUT', {name: file.name, content, expected_version: existing.version}));
+    } else {
+      result = await api('/upload?name=' + encodeURIComponent(file.name), {method: 'POST', headers: {'Content-Type': 'text/markdown'}, body: file});
+    }
+    open(result); await refresh(); notice('Imported. Indexing is pending.');
+  });
+  window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
+  if (!token) { notice('Open the full editing link from iMessage. Send /notes for a new link.', true); return; }
+  action(async () => { await refresh(); byId('workspace').classList.remove('hidden'); notice('Your editing link lasts one hour. Save changes before leaving.'); });
+})();
+</script>
+</body>
+</html>
