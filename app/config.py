@@ -29,6 +29,9 @@ class Limits:
         values = {f.name: int(os.environ.get('LIMIT_' + f.name.upper(), f.default)) for f in fields(cls)}
         if any(v < 1 for v in values.values()) or values['dedup_days'] < 30:
             raise ValueError('Limits must be positive; dedup retention must be at least 30 days')
+        for field in fields(cls):
+            if field.name != 'dedup_days' and values[field.name] > field.default:
+                raise ValueError('Increasing limits requires reviewing the database policy and live capacity first')
         return cls(**values)
 
 

@@ -64,6 +64,7 @@ async def create_project(service, worker, nemotron):
     assert len(state["projects"]) == 1
     project = next(iter(state["projects"].values()))
     body = service.keys.decrypt(state["outbox"]["owner-create"]["payload"], "outbox:owner-create")["text"]
+    assert project["code"] in body
     token = body.split("/vault#")[1]
     return project, token
 

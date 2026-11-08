@@ -22,6 +22,10 @@ def initialize(state):
         state.setdefault(name, {})
 
 
+def redact_links(text):
+    return re.sub(r'https?://[^\s<>]*?/vault#[^\s<>]+', '[vault link omitted]', text)
+
+
 def available(state, project_id):
     project = state['projects'].get(project_id)
     if not project or project.get('deleted'):
@@ -130,12 +134,18 @@ class Service:
         """The transaction is the per-user sequencer; no model work runs here."""
         now = self.clock()
         async with self.gates[event.phone]:
+            snapshot = await self.snapshot()
+            user = snapshot['users'].get(event.phone)
+            prepared = self._prepare_step('issue_vault_link', event.event_id, f'{event.event_id}:0', user['focus'], now) if user and event.text.strip().lower() == '/vault' else None
             def accept(state):
                 initialize(state)
                 if event.event_id in state['receipts']:
                     return copy.deepcopy(state['receipts'][event.event_id])
                 receipt = {'id': event.event_id, 'created': now, 'status': 'rejected'}
                 state['receipts'][event.event_id] = receipt
+                if event.occurred_at <= now - self.limits.dedup_days * 86400 or event.occurred_at > now + 300:
+                    receipt['reason'] = 'This event is outside the supported retention window.'
+                    return receipt
                 assignment = state['assignments'].get(event.phone)
                 if not assignment or assignment['destination'] != event.destination or event.occurred_at <= assignment['created']:
                     receipt['reason'] = 'An active preassignment and a new inbound message are required.'
@@ -143,8 +153,12 @@ class Service:
                 user = state['users'].setdefault(event.phone, {'id': event.phone, 'phone': event.phone,
                     'mode': 'builder', 'focus': None, 'selected': None, 'revision': 0, 'sequence': 0})
                 pending = [j for j in state['jobs'].values() if j['status'] in ('queued', 'running') and j['kind'] == 'turn']
-                text = event.text.strip()
+                text = redact_links(event.text.strip())
                 deterministic = text.startswith('/') or bool(re.search(r'\b(reset|clear|erase|forget|delete)\b.*\b(history|conversation|chat|memory)\b', text, re.I))
+                if not deterministic and state['usage'].get(f'generation-day:{int(now // 86400)}', 0) >= self.limits.generations_per_day:
+                    receipt['reason'] = 'The generation limit has been reached. Please try again tomorrow.'
+                    self._notice(state, user, event, receipt['reason'], now)
+                    return receipt
                 # Navigation must remain available when model queues are full.
                 if not deterministic and (len(pending) >= self.limits.pending_total or sum(j['user'] == user['id'] for j in pending) >= self.limits.pending_per_user):
                     receipt['reason'] = 'Temporary capacity limit. Please try again later.'
@@ -165,11 +179,11 @@ class Service:
                     'mode': user['mode'], 'focus': user['focus'], 'selected': user['selected'],
                     'revision': user['revision'], 'question': text, 'attempts': 0, 'generations': 0,
                     'steps': [], 'model_replies': [], 'space_id': event.space_id, 'agent_id': event.agent_id,
-                    'destination': event.destination, 'assignment': assignment['id']}
+                    'destination': event.destination, 'assignment': assignment['id'], 'received_at': event.occurred_at}
                 state['jobs'][job['id']] = job
                 if deterministic:
                     job.update(status='running', claim='command', lease=now + self.limits.lease_seconds)
-                    answer = self._command(state, user, job, now)
+                    answer = self._command(state, user, job, now, prepared)
                     self._complete(state, job, answer, now)
                 return copy.deepcopy(receipt)
             return await self.store.transaction(accept)
@@ -181,10 +195,10 @@ class Service:
         state['usage'][key] = 1
         job = {'id': event.event_id, 'user': user['id'], 'revision': user['revision'], 'mode': user['mode'],
             'focus': user['focus'], 'selected': user['selected'], 'question': '', 'space_id': event.space_id,
-            'agent_id': event.agent_id, 'destination': event.destination, 'created': now}
+            'agent_id': event.agent_id, 'destination': event.destination, 'received_at': event.occurred_at, 'created': now}
         self._outbox(state, job, text, [], {}, now)
 
-    def _command(self, state, user, job, now):
+    def _command(self, state, user, job, now, prepared=None):
         parts = job['question'].split()
         command = parts[0].lower() if parts else ''
         try:
@@ -207,7 +221,7 @@ class Service:
             if command == '/vault' and len(parts) == 1:
                 owned(state, user['id'], user['focus'])
                 step = self._intent(state, job, 'issue_vault_link', {}, now)
-                self._execute(state, job, step, now)
+                self._execute(state, job, step, now, prepared)
                 return 'Your editing link is valid for one hour.'
             if command == '/help' and len(parts) == 1:
                 return '/builder — builder mode\n/projects — your projects\n/edit CODE — edit an owned project\n/use CODE — ask a project agent\n/vault — one-hour editor link\n/help — commands\nHistory reset is unsupported.'
@@ -238,7 +252,16 @@ class Service:
             return copy.deepcopy(self._intent(state, job, name, arguments, now))
         return await self.store.transaction(record)
 
-    def _execute(self, state, job, step, now):
+    def _prepare_step(self, name, job_id, step_id, project_id, now):
+        if name == 'create_project':
+            return {'id': secrets.token_hex(16), 'code': secrets.token_hex(4).upper()}
+        if name == 'issue_vault_link':
+            cap_id, token = secrets.token_hex(16), secrets.token_urlsafe(32)
+            return {'id': cap_id, 'hash': token_hash(token), 'expires': now + self.limits.link_seconds,
+                    'ciphertext': self.keys.encrypt({'token': token}, f'cap:{cap_id}:{project_id}:{step_id}')}
+        return None
+
+    def _execute(self, state, job, step, now, prepared=None):
         if 'result' in step:
             return step['result']
         user = state['users'][job['user']]
@@ -249,10 +272,9 @@ class Service:
             active = [p for p in state['projects'].values() if not p.get('deleted')]
             if len(active) >= self.limits.projects_total or sum(p['owner'] == user['id'] for p in active) >= self.limits.projects_per_user:
                 raise DomainError('Project limit reached.', 429)
-            project_id = secrets.token_hex(16)
-            code = secrets.token_hex(4).upper()
-            while any(p['code'] == code for p in state['projects'].values()):
-                code = secrets.token_hex(4).upper()
+            project_id, code = prepared['id'], prepared['code']
+            if project_id in state['projects'] or any(p['code'] == code for p in state['projects'].values()):
+                raise DomainError('Project code allocation conflicted. Please try again.', 409)
             project = {'id': project_id, 'owner': user['id'], 'name': args['name'].strip(), 'code': code,
                 'instructions': 'Give concise answers grounded in current sources, with filename and heading citations.', 'created': now}
             state['projects'][project_id] = project
@@ -273,37 +295,53 @@ class Service:
             result = {'updated': True}
         else:
             project = owned(state, user['id'], step['target'])
-            cap_id, token = secrets.token_hex(16), secrets.token_urlsafe(32)
+            if not prepared:
+                raise DomainError('Select a project you own before requesting a vault link.')
+            cap_id = prepared['id']
             cap = {'id': cap_id, 'project': project['id'], 'owner': user['id'], 'job': job['id'],
-                   'step': step['id'], 'hash': token_hash(token), 'expires': now + self.limits.link_seconds,
+                   'step': step['id'], 'hash': prepared['hash'], 'expires': prepared['expires'],
                    'revoked': False, 'delivered': False}
             state['capabilities'][cap_id] = cap
-            state['delivery_material'][cap_id] = self.keys.encrypt({'token': token}, f'cap:{cap_id}:{project["id"]}:{step["id"]}')
+            state['delivery_material'][cap_id] = prepared['ciphertext']
             result = {'capability': cap_id, 'expires': cap['expires']}
         step.update(result=result, resulting_revision=job['revision'], continuation={k: job[k] for k in ('mode', 'focus', 'selected', 'revision')})
         return result
 
     async def execute_step(self, job_id, claim, step_id):
         now = self.clock()
-        def execute(state):
-            job = check_job(state, job_id, claim, now)
-            step = next(s for s in job['steps'] if s['id'] == step_id)
-            return copy.deepcopy(self._execute(state, job, step, now))
         async with self.gates[(await self.snapshot())['jobs'][job_id]['user']]:
+            snapshot = await self.snapshot()
+            job = check_job(snapshot, job_id, claim, now)
+            step = next(s for s in job['steps'] if s['id'] == step_id)
+            prepared = self._prepare_step(step['name'], job_id, step_id, step['target'], now) if 'result' not in step else None
+            def execute(state):
+                job = check_job(state, job_id, claim, now)
+                step = next(s for s in job['steps'] if s['id'] == step_id)
+                return copy.deepcopy(self._execute(state, job, step, now, prepared))
             return await self.store.transaction(execute)
 
     def _outbox(self, state, job, text, caps, versions, now):
         outbox = {'id': job['id'], 'user': job['user'], 'revision': job['revision'], 'created': now,
                   'status': 'pending', 'key': job['id'], 'space_id': job['space_id'], 'agent_id': job['agent_id'],
                   'destination': job['destination'], 'project': job['selected'] if job['mode'] == 'customer' else job['focus'],
-                  'capabilities': caps, 'versions': versions, 'attempts': 0}
+                  'capabilities': caps, 'versions': versions, 'attempts': 0,
+                  'assignment': job.get('assignment'), 'received_at': job.get('received_at', job['created'])}
         outbox['payload'] = self.keys.encrypt({'text': text}, f'outbox:{job["id"]}')
         state['outbox'][job['id']] = outbox
 
     def _complete(self, state, job, text, now, versions=None):
+        text = redact_links(text)
+        for step in job.get('steps', []):
+            if step['name'] == 'create_project' and 'result' in step and step['result'].get('code') not in text:
+                text += f'\nProject code: {step["result"]["code"]}'
         versions = versions or {}
         if not source_versions_current(state, versions):
             raise DomainError('Sources are updating. Please ask again shortly.', 409)
+        if job.get('status') == 'running':
+            for step in job.get('steps', []):
+                cap_id = step.get('result', {}).get('capability')
+                if cap_id and (cap_id not in state['capabilities'] or state['capabilities'][cap_id]['revoked']):
+                    raise DomainError('The editing link is no longer available. Request /vault again.', 409)
         caps, links = [], []
         for cap in state['capabilities'].values():
             if cap['job'] == job['id'] and not cap['revoked']:
@@ -364,7 +402,10 @@ class Service:
             raise DomainError('Choose a simple .md filename.')
         if '\x00' in content or len(content.encode('utf-8')) > self.limits.file_bytes:
             raise DomainError('Markdown must be UTF-8 text within the file size limit.', 413)
-        chunks = split_markdown(name, content)
+        try:
+            chunks = split_markdown(name, content)
+        except ValueError as exc:
+            raise DomainError(str(exc)) from None
         now = self.clock()
         new_id = file_id or secrets.token_hex(16)
         def save(state):
