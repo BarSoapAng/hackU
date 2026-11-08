@@ -306,6 +306,8 @@ class PhotonClient:
                     headers={**self.headers, 'Accept-Encoding': 'identity'}, timeout=10,
                     follow_redirects=False) as response:
                 self._check(response)
+                if response.headers.get('content-encoding', 'identity').lower() != 'identity':
+                    raise VoiceError('unreadable')
                 count = 0
                 with path.open('wb') as audio:
                     async for chunk in response.aiter_bytes(65536):

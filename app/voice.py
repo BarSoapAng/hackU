@@ -60,6 +60,7 @@ async def normalize_audio(source, target):
     try:
         process = await asyncio.create_subprocess_exec(
             'ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+            '-max_alloc', '67108864',
             '-protocol_whitelist', 'file,pipe',
             '-format_whitelist', 'aac,amr,caf,flac,mov,mp3,ogg,wav',
             '-threads', '1', '-i', str(source), '-map', '0:a:0', '-vn', '-sn', '-dn',

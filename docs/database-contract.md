@@ -74,6 +74,16 @@ test double, never a production fallback.
 
 ## Scope limitation before the live gate
 
+Voice turns add an optional `audio` object to existing job records: attachment ID,
+transcription status (`pending`, `running`, `completed`, `failed`), a monotonic
+attempt counter capped at two, a persisted deadline, start/queue-wait timing,
+latency, and validated MIME/size/duration metadata or a failure category. The
+transcript replaces the existing user `question` in a committed transaction
+before generation; completed transcriptions are reused after recovery. Audio
+bytes never enter this snapshot. No database schema publish is needed for these
+optional JSON fields. Existing conversation retention applies, and attachment IDs
+are cleared alongside turn content after seven days.
+
 This deliberately small integration-gate schema stores all logical records in
 one snapshot. Python transaction callbacks implement user authorization,
 leases, routing, and application operations. In addition to identity and CAS,

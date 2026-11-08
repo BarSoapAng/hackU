@@ -22,7 +22,16 @@ Read-only inspection on 2026-11-07 confirmed `hackUTD` (`pho_prj_01m6vs9z63eh7sd
 
 Verify the raw bytes before parsing JSON. `webhook-id`, `webhook-timestamp`, and `webhook-signature` use Standard Webhooks. Strip `whsec_`, Base64-decode the secret, and HMAC-SHA256 the exact `id.timestamp.body` bytes. Compare Base64 `v1,` signatures in constant time and accept any matching signature during secret rotation. Reject timestamps more than 300 seconds in the past **or future**. Reject missing secrets and malformed signatures.
 
-For supported events, read `data.object`. Require `type=message.received`, `source=imessage.photon`, `apiVersion=2026-07-01`, matching project IDs, `platform=imessage`, `status=received`, a `human` sender, an `agent` receiver, and a direct Space containing exactly those two participants. Text comes from `content.text` when `content.type=text`. Email handles, groups, outgoing messages, receipts, attachments, and events lacking a receiver are ignored before registration. Only normalize explicitly international phone numbers; do not infer country codes.
+For supported events, read `data.object`. Require `type=message.received`, `source=imessage.photon`, `apiVersion=2026-07-01`, matching project IDs, `platform=imessage`, `status=received`, a `human` sender, an `agent` receiver, and a direct Space containing exactly those two participants. Text comes from `content.text` when `content.type=text`; voice notes retain `content.attachmentId` when `content.type=voice`. Email handles, groups, outgoing messages, receipts, general attachments, and events lacking a receiver are ignored before registration. Only normalize explicitly international phone numbers; do not infer country codes.
+
+Voice metadata uses authenticated `GET /v1/projects/{id}/attachments/{attachmentId}`
+(`id`, `projectId`, `contentType`, `sizeBytes`). Bytes use the same authenticated
+path plus `/content`; redirects and arbitrary attachment URLs are not followed.
+Both endpoints and the `voice` schema were checked against the pinned OpenAPI
+contract above. Downloads occur only in the worker after durable admission.
+Only audio up to 10 MiB/two minutes is accepted. `ATTACHMENT_NOT_READY` (409)
+allows one retry after five seconds within the existing voice/turn deadlines.
+See [speech deployment and rollout](../deploy/speech/README.md).
 
 The durable deduplication identity is the body's event `id`; `message.id` is also retained. A delivery's `webhook-id` authenticates the signature but is not substituted for the event ID. `timestamps.receivedAt` is the authoritative receipt time preserved across replay and is used to check that the participant messaged **after** assignment. The envelope timestamp and current delivery timestamp do not prove this prerequisite.
 

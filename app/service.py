@@ -195,12 +195,15 @@ class Service:
                 pending = [j for j in state['jobs'].values() if j['status'] in ('queued', 'running') and j['kind'] == 'turn']
                 text = redact_links(event.text.strip())
                 deterministic = not event.attachment_id and deterministic_input(text)
+                waiting_for_voice = any(j['user'] == user['id'] and j.get('audio') for j in pending)
+                navigation = text.split(maxsplit=1)[0].lower() in ('/use', '/edit') if text else False
+                queued = not deterministic or (waiting_for_voice and not navigation)
                 if not deterministic and state['usage'].get(f'generation-day:{int(now // 86400)}', 0) >= self.limits.generations_per_day:
                     receipt['reason'] = 'The generation limit has been reached. Please try again tomorrow.'
                     self._notice(state, user, event, receipt['reason'], now)
                     return receipt
                 # Navigation must remain available when model queues are full.
-                if not deterministic and (len(pending) >= self.limits.pending_total or sum(j['user'] == user['id'] for j in pending) >= self.limits.pending_per_user):
+                if queued and (len(pending) >= self.limits.pending_total or sum(j['user'] == user['id'] for j in pending) >= self.limits.pending_per_user):
                     receipt['reason'] = 'Temporary capacity limit. Please try again later.'
                     self._notice(state, user, event, receipt['reason'], now)
                     return receipt
@@ -226,9 +229,7 @@ class Service:
                     job['audio'] = {'attachment_id': event.attachment_id, 'status': 'pending', 'attempts': 0}
                 # Explicit navigation still cancels obsolete work immediately. Other
                 # commands wait behind a voice note just like ordinary text.
-                waiting_for_voice = any(j['user'] == user['id'] and j.get('audio') for j in pending)
-                navigation = text.split(maxsplit=1)[0].lower() in ('/use', '/edit') if text else False
-                if deterministic and (not waiting_for_voice or navigation):
+                if not queued:
                     job.update(status='running', claim='command', lease=now + self.limits.lease_seconds)
                     answer = self._command(state, user, job, now, prepared)
                     self._complete(state, job, answer, now)

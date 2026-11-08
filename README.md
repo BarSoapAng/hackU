@@ -41,6 +41,13 @@ Nemotron and OpenAI credentials. The database runtime token must belong to the
 identity configured in the module, independently of the CLI's management login.
 Use the Photon webhook secret for payload version `2026-07-01`.
 
+English voice notes are implemented behind `VOICE_ENABLED=false`. They use a
+separate NVIDIA speech service on the existing Brev server and receive ordinary
+text replies. The backend needs FFmpeg (included in its Dockerfile). Configure
+`TRANSCRIPTION_URL` and `TRANSCRIPTION_API_KEY` only for an explicitly requested
+[speech rollout](deploy/speech/README.md), after GPU coexistence checks and a real
+iMessage recording pass. Text messaging works with voice disabled.
+
 The local runner reads `.env` without executing it as shell code and preserves
 quoted JSON. After stopping any existing backend, start one process with:
 

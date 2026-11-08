@@ -54,6 +54,9 @@ class Worker:
                     continue
                 if job.get('user') and any(j.get('user') == job['user'] and j['status'] in ('queued', 'running') and j['sequence'] < job['sequence'] for j in jobs.values()):
                     continue
+                if job.get('audio', {}).get('status') in ('pending', 'running') and any(
+                        j.get('audio', {}).get('status') in ('pending', 'running') for j in active):
+                    continue  # Keep worker slots available for other users' text.
                 if job['attempts'] >= 5:
                     exhaust(job)
                     continue
@@ -359,18 +362,19 @@ class Worker:
         current = check_job(await self.service.snapshot(), job['id'], job['claim'], self.service.clock())
         if current['audio']['status'] == 'completed':
             return
-        if not self.transcriber:
-            raise VoiceError('unavailable')
         async with self.transcriptions:
             now = self.service.clock()
             def start(state):
                 audio = check_job(state, job['id'], job['claim'], now)['audio']
                 audio.setdefault('deadline', min(job['deadline'], now + 45))
+                audio.setdefault('started', now)
                 audio.setdefault('queue_wait_ms', round(max(0, now - job['created']) * 1000))
                 return copy.deepcopy(audio)
             audio = await self.service.store.transaction(start)
             started = time.monotonic()
             try:
+                if not self.transcriber:
+                    raise VoiceError('unavailable')
                 if audio['deadline'] <= now:
                     raise VoiceError('timeout')
                 async with asyncio.timeout(audio['deadline'] - now):
@@ -463,7 +467,8 @@ class Worker:
             if current.get('audio') and current['audio']['status'] != 'completed':
                 from app.voice import VoiceError
                 error_code = getattr(error, 'code', 'timeout' if isinstance(error, TimeoutError) else 'unavailable')
-                current['audio'].update(status='failed', failure=error_code)
+                current['audio'].update(status='failed', failure=error_code,
+                    latency_ms=round(max(0, now - current['audio'].get('started', now)) * 1000))
                 error_message = str(VoiceError(error_code))
             else:
                 error_message = None

@@ -11,6 +11,7 @@ import httpx
 import pytest
 
 from app.photon import PhotonClient, PhotonError, SendResult, WebhookError
+from app.config import Limits, Settings
 from app.voice import Transcriber, VoiceError, clean_audio, normalize_audio, prepare_audio, wav_duration
 from test_photon import event, signed, verify
 from test_service import create_project, environment, inbound, issue_capability
@@ -233,6 +234,83 @@ async def test_disabled_voice_does_not_download(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_deferred_commands_obey_capacity_but_navigation_remains_available():
+    env = await environment(Limits(pending_per_user=1))
+    job, project, _ = await create_project(env)
+    await env.service.complete(job['id'], job['claim'], 'Ready')
+    assert (await env.service.admit(voice(env)))['status'] == 'accepted'
+    assert (await env.service.admit(inbound(env, 'help', 'help')))['status'] == 'rejected'
+    assert (await env.service.admit(inbound(env, 'switch', '/use ' + project['code'])))['status'] == 'accepted'
+    assert (await env.service.snapshot())['jobs']['voice']['status'] == 'superseded'
+
+
+@pytest.mark.asyncio
+async def test_waiting_voice_does_not_claim_slots_needed_for_text():
+    env = await environment()
+    await env.service.admit(voice(env))
+    await env.service.admit(replace(voice(env, 'guest-voice'), phone='+12045550102', destination='+16285550102'))
+    await env.service.store.transaction(lambda s: s['assignments'].update({'+12045550103': {
+        'id': 'third', 'phone': '+12045550103', 'destination': '+16285550103', 'created': env.clock.now - 60}}))
+    await env.service.admit(replace(inbound(env, 'text', 'Build an agent'), phone='+12045550103', destination='+16285550103'))
+    assert (await env.worker.claim('turn'))['id'] == 'voice'
+    assert (await env.worker.claim('turn'))['id'] == 'text'
+    assert await env.worker.claim('turn') is None
+
+
+@pytest.mark.asyncio
+async def test_transcription_total_timeout_cancels_pending_request(monkeypatch):
+    env = await environment()
+    env.worker.transcriber = object()
+    cancelled = asyncio.Event()
+    async def hang(*args):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+    monkeypatch.setattr('app.voice.prepare_audio', hang)
+    await env.service.admit(voice(env))
+    job = await env.worker.claim('turn')
+    await env.service.store.transaction(lambda s: s['jobs']['voice']['audio'].update(deadline=env.clock.now + .01))
+    await env.worker.run_job(job)
+    assert cancelled.is_set()
+    assert (await env.service.snapshot())['jobs']['voice']['audio']['failure'] == 'timeout'
+
+
+@pytest.mark.asyncio
+async def test_one_transient_retry_can_succeed(monkeypatch):
+    env = await environment()
+    env.worker.transcriber = object()
+    prepare = mock_audio(monkeypatch)
+    prepare.side_effect = [httpx.ConnectError('private'), ('help', {'duration_seconds': 1})]
+    await env.service.admit(voice(env))
+    await env.worker.run_job(await env.worker.claim('turn'))
+    state = await env.service.snapshot()
+    assert prepare.await_count == state['jobs']['voice']['audio']['attempts'] == 2
+    assert state['jobs']['voice']['audio']['status'] == 'completed'
+
+
+def test_voice_configuration_is_explicit_and_requires_private_credentials(monkeypatch):
+    for name in ('photon_project_id', 'photon_api_key', 'photon_webhook_secret', 'database_url',
+                 'database_name', 'database_token', 'nemotron_base_url', 'nemotron_api_key',
+                 'openai_api_key', 'encryption_keys'):
+        monkeypatch.setenv(name.upper(), 'test')
+    monkeypatch.setenv('PUBLIC_URL', 'https://example.test')
+    monkeypatch.delenv('VOICE_ENABLED', raising=False)
+    assert not Settings.from_env().voice_enabled
+    monkeypatch.setenv('VOICE_ENABLED', 'false')
+    assert not Settings.from_env().voice_enabled
+    monkeypatch.setenv('VOICE_ENABLED', 'true')
+    monkeypatch.delenv('TRANSCRIPTION_API_KEY', raising=False)
+    with pytest.raises(ValueError, match='credential'):
+        Settings.from_env()
+    monkeypatch.setenv('TRANSCRIPTION_API_KEY', 'private')
+    assert Settings.from_env().voice_enabled
+    monkeypatch.setenv('TRANSCRIPTION_URL', 'http://public.example.test')
+    with pytest.raises(ValueError, match='loopback'):
+        Settings.from_env()
+
+
+@pytest.mark.asyncio
 async def test_transient_retry_budget_survives_recovery(monkeypatch):
     env = await environment()
     env.worker.transcriber = object()
@@ -266,7 +344,7 @@ async def test_asr_timeout_and_expired_queue_get_friendly_failure(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('issue', [None, 'type', 'project', 'size', 'stream_size', 'redirect', 'truncated'])
+@pytest.mark.parametrize('issue', [None, 'type', 'project', 'size', 'stream_size', 'redirect', 'truncated', 'encoding'])
 async def test_authenticated_attachment_download_is_bounded(tmp_path, issue):
     requests = []
     def handler(request):
@@ -275,6 +353,8 @@ async def test_authenticated_attachment_download_is_bounded(tmp_path, issue):
         if request.url.path.endswith('/content'):
             if issue == 'redirect':
                 return httpx.Response(302, headers={'Location': 'https://attacker.test'})
+            if issue == 'encoding':
+                return httpx.Response(200, headers={'Content-Encoding': 'br'}, content=b'')
             return httpx.Response(200, content=b'a' * (10 * 1024 * 1024 + 1) if issue == 'stream_size' else b'wav')
         return httpx.Response(200, json={'id': 'attachment', 'projectId': 'other' if issue == 'project' else 'project',
             'contentType': 'text/plain' if issue == 'type' else 'audio/mp4',
@@ -317,6 +397,27 @@ async def test_decoder_failure_and_normalization_contract(monkeypatch, tmp_path,
     else:
         _, duration = await normalize_audio(tmp_path / 'input', tmp_path / 'output')
         assert duration == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelled_decode_kills_and_reaps_ffmpeg(monkeypatch, tmp_path):
+    entered, done = asyncio.Event(), asyncio.Event()
+    process = SimpleNamespace(returncode=None)
+    async def wait():
+        entered.set()
+        await done.wait()
+        return process.returncode
+    def kill():
+        process.returncode = -9
+        done.set()
+    process.wait, process.kill = wait, kill
+    monkeypatch.setattr('asyncio.create_subprocess_exec', AsyncMock(return_value=process))
+    task = asyncio.create_task(normalize_audio(tmp_path / 'input', tmp_path / 'output'))
+    await entered.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert process.returncode == -9
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,32 @@
+services:
+  speech:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8002:8002"
+    environment:
+      TRANSCRIPTION_API_KEY: ${TRANSCRIPTION_API_KEY:?Set a separate private speech credential}
+      HF_HOME: /cache/huggingface
+    volumes:
+      - ./cache:/cache
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    shm_size: 1gb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8002/readyz',headers={'Authorization':'Bearer '+os.environ['TRANSCRIPTION_API_KEY']}),timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15m
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
