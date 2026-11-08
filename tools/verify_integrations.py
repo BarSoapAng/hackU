@@ -56,16 +56,36 @@ async def models():
         await embeddings.close()
 
 
+async def embeddings():
+    from app.retrieval import NemotronEmbeddings, cosine_retrieve
+    embedder = NemotronEmbeddings(os.environ['EMBEDDING_API_KEY'],
+        base_url=os.environ.get('EMBEDDING_BASE_URL', 'http://127.0.0.1:8004/v1'))
+    try:
+        chunks = await embedder.embed_chunks([
+            {'filename': 'hours.md', 'heading': 'Hours', 'text': 'The library opens at nine AM and closes at five PM.', 'index': 0},
+            {'filename': 'refunds.md', 'heading': 'Refunds', 'text': 'Refunds are available within thirty days with a receipt.', 'index': 1}])
+        for question, expected in [('When does the library open?', 'hours.md'),
+                                   ('How long do I have to return a purchase for a refund?', 'refunds.md')]:
+            query = await embedder.embed_query(question)
+            selected = cosine_retrieve(query, chunks, model=embedder.model,
+                dimensions=embedder.dimensions, preprocessing_version=embedder.preprocessing_version)
+            if not selected or selected[0]['filename'] != expected:
+                raise RuntimeError('Synthetic retrieval ranking failed')
+        print('PASS Nemotron passage/query embeddings and two synthetic retrieval rankings')
+    finally:
+        await embedder.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('gate', choices=['database', 'models'])
+    parser.add_argument('gate', choices=['database', 'models', 'embeddings'])
     parser.add_argument('--live', action='store_true', help='Required explicit opt-in to real provider calls')
     args = parser.parse_args()
     if not args.live:
         parser.error('Live checks require --live and an explicitly requested verification step')
     os.environ['HAYSTACK_TELEMETRY_ENABLED'] = 'false'
     try:
-        asyncio.run(database() if args.gate == 'database' else models())
+        asyncio.run({'database': database, 'models': models, 'embeddings': embeddings}[args.gate]())
     except Exception as error:
         # Do not echo exceptions from providers, which can contain credentials/body text.
         parser.exit(1, f'Live gate failed ({type(error).__name__}); inspect configuration and provider status securely.\n')

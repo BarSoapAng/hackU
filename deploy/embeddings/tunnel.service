@@ -1,0 +1,14 @@
+[Unit]
+Description=Private Hypha embedding connection
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+EnvironmentFile=/home/ubuntu/.config/hypha-embedding-tunnel.env
+ExecStart=/usr/bin/ssh -NT -i /home/ubuntu/.ssh/hypha-embeddings -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/home/ubuntu/.ssh/hypha-embeddings-known-hosts -o ExitOnForwardFailure=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -L 127.0.0.1:8004:127.0.0.1:8004 -p ${EMBEDDING_SSH_PORT} ${EMBEDDING_SSH_DESTINATION}
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

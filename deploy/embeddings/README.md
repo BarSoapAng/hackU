@@ -14,6 +14,7 @@ inspection, so this configuration does not share that GPU or reduce its caches.
 The service binds VM loopback port 8004. It authenticates every request, accepts
 only bounded text batches, and processes one request at a time, with inference
 batch size one. Busy requests receive 503 for the worker's bounded retry policy.
+A 40-second inference watchdog restarts only this service if inference stalls.
 It returns actual tokenizer usage and normalized 1,536-dimensional vectors.
 
 ## Deployment
@@ -39,7 +40,12 @@ Connect the backend VM directly to this VM with a persistent authenticated SSH
 tunnel or HTTPS endpoint. For SSH, use a dedicated key restricted to forwarding
 `127.0.0.1:8004`, verify the destination host key, and bind the forward only to
 backend loopback. Do not copy a developer's general-purpose SSH credentials.
-Run the tunnel under a service manager so the laptop is not required.
+Use `tunnel.service` on the backend VM with
+`/home/ubuntu/.config/hypha-embedding-tunnel.env` containing `EMBEDDING_SSH_PORT`
+and `EMBEDDING_SSH_DESTINATION=user@host`. Its dedicated private key and verified
+host key file live at the paths specified in the unit. Restrict the public key
+on the embedding VM with `restrict,port-forwarding,permitopen="127.0.0.1:8004",command="/bin/false"`.
+The tunnel restarts automatically and does not depend on the laptop.
 
 Set these values in the backend's private `.env`:
 
@@ -68,6 +74,15 @@ Offline checks run from the repository root:
 ```bash
 python -m pytest -q tests/test_retrieval.py tests/test_embedding_service.py tests/test_embedding_upgrade.py tests/test_telemetry.py
 ```
+
+After deployment, the backend's isolated synthetic check is:
+
+```bash
+python -m tools.local tools.verify_integrations embeddings --live
+```
+
+It calls the private embedding service without invoking chat models, database
+writes, or Photon delivery.
 
 GPU memory, latency, and representative retrieval quality still require a live
 deployment measurement. A 1B model does not require another 48–80 GB GPU.

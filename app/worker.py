@@ -300,6 +300,8 @@ class Worker:
         if not file or file['version'] != job['version']:
             raise DomainError('Indexing was superseded.', 409)
         chunks = split_markdown(file['name'], file['content'])
+        if sum(token_bound(chunk['text']) for chunk in chunks) > self.service.limits.embedding_tokens_per_day:
+            raise DomainError('This note exceeds the indexing budget. Split it into smaller notes.', 413)
         if len(chunks) + sum(f['chunk_count'] for f in state['files'].values()
                 if f['project'] == file['project'] and f['id'] != file['id']) > self.service.limits.chunks_per_project:
             raise DomainError('Sprout notes limit exceeded. Shorten a note before indexing again.', 413)

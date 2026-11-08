@@ -518,7 +518,7 @@ class Service:
         return file
 
     async def save_file(self, token, name, content, file_id=None, expected_version=None):
-        from app.retrieval import split_markdown
+        from app.retrieval import split_markdown, token_bound
         if not name or len(name) > 120 or not name.lower().endswith('.md') or any(c in name for c in '/\\\x00\r\n'):
             raise DomainError('Choose a simple .md note name.')
         if '\x00' in content or len(content.encode('utf-8')) > self.limits.file_bytes:
@@ -527,6 +527,8 @@ class Service:
             chunks = split_markdown(name, content)
         except ValueError as exc:
             raise DomainError(str(exc)) from None
+        if sum(token_bound(chunk['text']) for chunk in chunks) > self.limits.embedding_tokens_per_day:
+            raise DomainError('This note exceeds the indexing budget. Split it into smaller notes.', 413)
         now = self.clock()
         new_id = file_id or secrets.token_hex(16)
         def save(state):

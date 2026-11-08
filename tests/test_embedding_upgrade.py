@@ -1,8 +1,9 @@
 from unittest.mock import AsyncMock
 
+import pytest
 from app.config import Limits
 from app.retrieval import NemotronEmbeddings
-from app.service import source_versions_current
+from app.service import DomainError, source_versions_current
 from test_service import create_project, environment, issue_capability
 
 
@@ -51,3 +52,13 @@ async def test_oversized_legacy_index_fails_only_the_note_before_provider_calls(
     state = await env.service.snapshot()
     assert sorted(f['status'] for f in state['files'].values()) == ['failed', 'pending']
     env.embeddings.embed_chunks.assert_not_called()
+
+
+async def test_note_that_cannot_fit_a_daily_budget_is_rejected_without_an_endless_retry():
+    env = await environment(Limits(embedding_tokens_per_day=50))
+    job, _, _ = await create_project(env)
+    token, _, _ = await issue_capability(env, job)
+    with pytest.raises(DomainError, match='Split it into smaller notes') as error:
+        await env.service.save_file(token, 'large.md', 'long note ' * 10)
+    assert error.value.status == 413
+    assert not (await env.service.snapshot())['files']
