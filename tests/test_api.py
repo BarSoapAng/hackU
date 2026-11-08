@@ -5,13 +5,14 @@ import hmac
 import json
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock
 
 import httpx
 
 from app.config import Limits
-from app.database import MemoryStore
+from app.database import DatabaseUnavailable, MemoryStore
 from app.main import create_app
-from app.photon import Assignment
+from app.photon import Assignment, PhotonError, SendResult
 from app.security import Keyring, token_hash
 from app.service import Service, initialize
 
@@ -33,7 +34,8 @@ class TestApi(IsolatedAsyncioTestCase):
         self.service = Service(MemoryStore(state), Keyring({"test": b"x" * 32}, "test"),
                                "https://example.test", Limits(), lambda: self.now[0])
         self.secret = "whsec_" + base64.b64encode(b"s" * 32).decode()
-        self.app = create_app(self.service, SimpleNamespace(), self.secret, "project")
+        self.photon = SimpleNamespace(mark_read=AsyncMock(return_value=SendResult("dispatched", "read-action-1")))
+        self.app = create_app(self.service, SimpleNamespace(photon=self.photon), self.secret, "project")
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app), base_url="https://example.test")
         self.auth = {"Authorization": "Bearer token-one"}
 
@@ -152,7 +154,41 @@ class TestApi(IsolatedAsyncioTestCase):
         assert len(state["users"]) == 1
         assert len(state["jobs"]) == 1 and state["jobs"]["event-1"]["status"] == "queued"
         assert state["receipts"]["event-1"]["status"] == "accepted"
+        assert state["receipts"]["event-1"]["read_receipt_attempted"]
+        self.photon.mark_read.assert_awaited_once_with("message-1")
         assert state["users"]["+14155550123"]["sequence"] == 1
+
+    async def test_concurrent_redeliveries_submit_only_one_read_receipt(self):
+        raw, headers = self.delivery()
+        responses = await asyncio.gather(*[
+            self.client.post("/webhooks/photon", content=raw, headers=headers) for _ in range(4)])
+        assert all(response.status_code == 200 for response in responses)
+        self.photon.mark_read.assert_awaited_once_with("message-1")
+
+    async def test_read_receipt_failure_preserves_reply_and_does_not_retry(self):
+        self.photon.mark_read.side_effect = PhotonError("PHOTON_HTTP_403", 403)
+        raw, headers = self.delivery(text="/help")
+        for _ in range(2):
+            assert (await self.client.post("/webhooks/photon", content=raw, headers=headers)).status_code == 200
+        state = await self.service.snapshot()
+        assert state["jobs"]["event-1"]["status"] == "completed"
+        assert state["outbox"]["event-1"]["status"] == "pending"
+        self.photon.mark_read.assert_awaited_once_with("message-1")
+
+    async def test_unconfirmed_read_receipt_does_not_fail_the_turn(self):
+        self.photon.mark_read.return_value = SendResult("unknown")
+        raw, headers = self.delivery()
+        assert (await self.client.post("/webhooks/photon", content=raw, headers=headers)).status_code == 200
+        assert (await self.service.snapshot())["jobs"]["event-1"]["status"] == "queued"
+
+    async def test_read_receipt_storage_failure_preserves_accepted_turn(self):
+        self.service.claim_read_receipt = AsyncMock(side_effect=DatabaseUnavailable("temporary"))
+        raw, headers = self.delivery()
+        assert (await self.client.post("/webhooks/photon", content=raw, headers=headers)).status_code == 200
+        state = await self.service.snapshot()
+        assert state["jobs"]["event-1"]["status"] == "queued"
+        assert state["receipts"]["event-1"]["status"] == "accepted"
+        self.photon.mark_read.assert_not_awaited()
 
     async def test_invalid_signature_unsupported_and_preassignment_messages_create_no_user(self):
         raw, headers = self.delivery()
@@ -164,6 +200,7 @@ class TestApi(IsolatedAsyncioTestCase):
         state = await self.service.snapshot()
         assert not state["users"] and not state["jobs"]
         assert state["receipts"]["event-1"]["status"] == "rejected"
+        self.photon.mark_read.assert_not_awaited()
 
     async def test_commands_do_not_wait_for_worker(self):
         raw, headers = self.delivery(text="/help")
@@ -171,6 +208,7 @@ class TestApi(IsolatedAsyncioTestCase):
         state = await self.service.snapshot()
         assert state["jobs"]["event-1"]["status"] == "completed"
         assert state["outbox"]["event-1"]["status"] == "pending"
+        self.photon.mark_read.assert_awaited_once_with("message-1")
 
     async def test_health_and_inprocess_lifespan_use_only_injected_doubles(self):
         assert (await self.client.get("/healthz")).json() == {"status": "ok"}

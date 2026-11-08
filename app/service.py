@@ -188,6 +188,15 @@ class Service:
                 return copy.deepcopy(receipt)
             return await self.store.transaction(accept)
 
+    async def claim_read_receipt(self, event_id):
+        def claim(state):
+            receipt = state['receipts'].get(event_id)
+            if not receipt or receipt['status'] != 'accepted' or receipt.get('read_receipt_attempted'):
+                return False
+            receipt['read_receipt_attempted'] = True
+            return True
+        return await self.store.transaction(claim)
+
     def _notice(self, state, user, event, text, now):
         key = f'notice:{user["id"]}:{int(now // 60)}'
         if state['usage'].get(key):

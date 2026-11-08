@@ -119,6 +119,30 @@ def assignment(phone="+14155550123", destination="+16283166196", identifier="ass
 
 
 class TestTransport(IsolatedAsyncioTestCase):
+    async def test_mark_read_uses_inbound_id_stable_key_and_no_body(self):
+        requests = []
+        async def handler(request):
+            requests.append(request)
+            return httpx.Response(202, json={"id": "read-action-1", "status": "dispatched"})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            result = await PhotonClient(client, "project", "test-secret").mark_read("incoming-1")
+        assert len(requests) == 1
+        assert requests[0].method == "POST"
+        assert requests[0].url.path == "/v1/projects/project/messages/incoming-1/read"
+        assert requests[0].headers["Idempotency-Key"] == "read:incoming-1"
+        assert requests[0].headers["Authorization"] == "Bearer test-secret"
+        assert requests[0].content == b""
+        assert result.status == "dispatched" and result.message_id == "read-action-1"
+
+    async def test_ambiguous_read_receipt_is_not_retried(self):
+        requests = []
+        async def handler(request):
+            requests.append(request)
+            raise httpx.ReadTimeout("synthetic timeout")
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            result = await PhotonClient(client, "project", "test-secret").mark_read("incoming-1")
+        assert result.status == "unknown" and len(requests) == 1
+
     async def test_send_converts_markdown_to_plain_text_without_losing_content(self):
         requests = []
         async def handler(request):

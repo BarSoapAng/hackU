@@ -246,6 +246,19 @@ class PhotonClient:
             return SendResult("unknown", message_id)
         return result
 
+    async def mark_read(self, message_id: str) -> SendResult:
+        if not message_id:
+            raise ValueError("A read receipt requires the incoming message ID.")
+        try:
+            response = await self._request("POST", f"/messages/{quote(message_id, safe='')}/read",
+                                          headers={"Idempotency-Key": f"read:{message_id}"})
+        except httpx.TransportError:
+            return SendResult("unknown")
+        if response.status_code >= 500 or response.status_code in {408, 409}:
+            return SendResult("unknown")
+        self._check(response)
+        return self._result(response)
+
     async def _assignment_rows(self) -> list[dict]:
         rows, page, seen = [], None, set()
         for _ in range(100):

@@ -2,16 +2,17 @@
 
 import asyncio
 import contextlib
+import logging
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, StrictInt, StrictStr, ValidationError
 
 from app.database import DatabaseUnavailable
-from app.photon import WebhookError, verify_event
+from app.photon import PhotonError, WebhookError, verify_event
 from app.service import DomainError
 
 
@@ -112,15 +113,26 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
             return JSONResponse({"status": "unavailable"}, status_code=503)
         return {"status": "ok"}
 
+    async def mark_read(inbound):
+        try:
+            if await service.claim_read_receipt(inbound.event_id):
+                result = await worker.photon.mark_read(inbound.message_id)
+                if result.status in ("unknown", "failed"):
+                    logging.getLogger(__name__).warning("read_receipt_unconfirmed event=%s status=%s", inbound.event_id, result.status)
+        except (DatabaseUnavailable, PhotonError) as error:
+            logging.getLogger(__name__).warning("read_receipt_failed event=%s type=%s", inbound.event_id, type(error).__name__)
+
     @app.post("/webhooks/photon")
-    async def webhook(request: Request):
+    async def webhook(request: Request, background_tasks: BackgroundTasks):
         raw = await bounded_body(request, 1024 * 1024)
         try:
             inbound = verify_event(raw, request.headers, webhook_secret, service.clock(), project_id=photon_project_id)
         except WebhookError:
             return JSONResponse({"detail": "Invalid webhook."}, status_code=401)
         if inbound:
-            await service.admit(inbound)
+            receipt = await service.admit(inbound)
+            if receipt['status'] == 'accepted':
+                background_tasks.add_task(mark_read, inbound)
         return {"received": True}
 
     @app.get("/vault", response_class=HTMLResponse)

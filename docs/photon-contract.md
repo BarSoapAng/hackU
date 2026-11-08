@@ -44,6 +44,14 @@ Set `PHOTON_PROJECT_ID` and `PHOTON_API_KEY` in the environment. Preserve the op
 
 ## Outbound submission and reconciliation
 
+After accepting a verified incoming text, a background task requests a read receipt using
+`POST /projects/{id}/messages/{messageId}/read` with `Idempotency-Key: read:{messageId}`
+and no body. The admission record claims the attempt atomically, so duplicate webhooks
+do not submit it again. Receipt failures do not fail the webhook or interrupt the reply.
+This is best effort: a process exit after claiming the attempt can lose the receipt;
+ambiguous submissions are not retried. HTTP 202 means queued, and provider privacy
+settings can suppress visibility. See [Photon's read-receipt contract](https://photon.codes/docs/beta/api-reference/messages/mark-a-message-as-read).
+
 Persist the payload and idempotency key before calling `send`. `POST /projects/{id}/messages` receives `spaceId` from the inbound Space, `senderId` from `receivedBy.id`, and `{type: "text", format: "plain", text: ...}`. Do not derive the sender ID from a phone number or assume all participants share the owner's line.
 
 The send endpoint returns HTTP 202 and a message representation. Preserve its exact status and provider ID: `dispatched` means submitted, `accepted` is channel acceptance without confirmed delivery, and `delivered` is confirmed delivery. Reconcile known IDs using `GET /projects/{id}/messages/{messageId}`. Only confirmed delivery should remove protected delivery material and make the reply visible in delivered model history.
