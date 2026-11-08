@@ -95,3 +95,7 @@ connection for 30 days. Exact app-opening/prefill behavior needs a real device c
 Provider details: [Photon](docs/photon-contract.md),
 [models and retrieval](docs/model-contract.md), and
 [SpacetimeDB](docs/database-contract.md).
+
+For local, read-only account/project inspection, see the
+[internal dashboard](docs/internal-dashboard.md). It runs separately from the
+public application and never starts messaging workers.
