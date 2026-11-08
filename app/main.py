@@ -177,7 +177,10 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
 
 def production_app() -> FastAPI:
     """Use one process: uvicorn app.main:production_app --factory --workers 1."""
+    import os
     import httpx
+
+    os.environ.setdefault('HAYSTACK_TELEMETRY_ENABLED', 'false')
 
     from app.config import Limits, Settings
     from app.database import SpacetimeStore

@@ -5,7 +5,9 @@ import json
 import logging
 import secrets
 
-from app.service import DomainError, available, cancel_job, cancel_outbox, check_job, consume, initialize, source_versions_current
+from app.database import DatabaseUnavailable
+from app.photon import PhotonError, SendResult
+from app.service import DomainError, available, cancel_job, cancel_outbox, check_job, consume, initialize, redact_links, source_versions_current
 
 
 class Worker:
@@ -158,9 +160,10 @@ class Worker:
             def record_response(state):
                 current = check_job(state, job['id'], job['claim'], now)
                 calls = response['tool_calls']
-                if len(calls) + len(current['steps']) > self.service.limits.tools_per_turn:
+                if len(calls) + current.get('tool_calls', 0) > self.service.limits.tools_per_turn:
                     raise DomainError('This turn reached its tool limit. Please send another message.', 429)
-                entry = {'role': 'assistant', 'content': response['text']}
+                current['tool_calls'] = current.get('tool_calls', 0) + len(calls)
+                entry = {'role': 'assistant', 'content': redact_links(response['text'])}
                 if calls:
                     entry['tool_calls'] = [{'id': c['id'], 'type': 'function', 'function': {'name': c['name'], 'arguments': json.dumps(c['arguments'])}} for c in calls]
                 current.setdefault('trace', []).append(entry)
@@ -287,6 +290,11 @@ class Worker:
                     job['lease'] = 0
         await self.service.store.transaction(recover)
 
+    async def refresh_assignments(self):
+        assignments = await self.photon.list_assignments()
+        await self.service.sync_assignments([{'id': a.assignment_id, 'phone': a.phone,
+            'destination': a.destination, 'created': a.created_at} for a in assignments])
+
     async def dispatch(self, outbox_id):
         state = await self.service.snapshot()
         box = state['outbox'][outbox_id]
@@ -296,7 +304,11 @@ class Worker:
                 box = state['outbox'][outbox_id]
                 if box['status'] != 'pending':
                     return None
-                valid = box['revision'] == state['users'][box['user']]['revision'] and source_versions_current(state, box['versions'])
+                valid = box['revision'] == state['users'][box['user']]['revision']
+                assignment = state['assignments'].get(box['user'])
+                valid &= bool(assignment and assignment['destination'] == box['destination']
+                    and assignment['created'] < box.get('received_at', box['created'])
+                    and (not box.get('assignment') or assignment['id'] == box['assignment']))
                 if box['project']:
                     project = state['projects'].get(box['project'])
                     valid &= bool(project and not project.get('deleted'))
@@ -306,6 +318,17 @@ class Worker:
                 if not valid:
                     cancel_outbox(state, box)
                     return None
+                if not source_versions_current(state, box['versions']):
+                    if box['attempts']:
+                        cancel_outbox(state, box)
+                        return None
+                    notice = 'Sources are updating. Please ask again shortly.'
+                    box['payload'] = self.service.keys.encrypt({'text': notice}, f'outbox:{box["id"]}')
+                    box['versions'] = {}
+                    for history in state['conversations'].values():
+                        for message in history:
+                            if message.get('outbox') == box['id'] and message['role'] == 'assistant':
+                                message['content'] = notice
                 box.update(status='submitting', attempts=box['attempts'] + 1)
                 return copy.deepcopy(box)
             box = await self.service.store.transaction(submit)
@@ -315,6 +338,9 @@ class Worker:
             try:
                 async with asyncio.timeout(10):
                     result = await self.photon.send(box['space_id'], box['agent_id'], body['text'], box['key'])
+            except PhotonError as error:
+                result = SendResult('failed' if error.status is not None and 400 <= error.status < 500
+                                    and error.status not in (408, 409) else 'unknown')
             except Exception:
                 result = None
             now = self.service.clock()
@@ -338,9 +364,16 @@ class Worker:
             await self.service.store.transaction(finish)
 
     async def reconcile(self, outbox_id):
-        state = await self.service.snapshot()
-        box = state['outbox'][outbox_id]
-        if box['status'] != 'unknown' or not box.get('message_id'):
+        now = self.service.clock()
+        def claim_lookup(state):
+            box = state['outbox'][outbox_id]
+            if box['status'] != 'unknown' or not box.get('message_id') or box.get('lookup_attempts', 0) >= 5 or box.get('lookup_after', 0) > now:
+                return None
+            box['lookup_attempts'] = box.get('lookup_attempts', 0) + 1
+            box['lookup_after'] = now + 20 * 2 ** (box['lookup_attempts'] - 1)
+            return copy.deepcopy(box)
+        box = await self.service.store.transaction(claim_lookup)
+        if not box:
             return
         result = await self.photon.reconcile(box['message_id'])
         def update(state):
@@ -363,7 +396,7 @@ class Worker:
         now = self.service.clock()
         def clean(state):
             initialize(state)
-            for cap in state['capabilities'].values():
+            for cap in list(state['capabilities'].values()):
                 if cap['expires'] <= now or cap['revoked']:
                     from app.service import revoke_capability
                     revoke_capability(state, cap)
@@ -371,6 +404,12 @@ class Worker:
                         box = state['outbox'][cap['outbox']]
                         if box['status'] != 'sent':
                             cancel_outbox(state, box)
+                    # Durable tool-step results still prevent reissuance. Expired
+                    # authorization hashes and every encrypted copy can be removed.
+                    for box in state['outbox'].values():
+                        if cap['id'] in box['capabilities']:
+                            box['capabilities'].remove(cap['id'])
+                    state['capabilities'].pop(cap['id'], None)
             for key, history in list(state['conversations'].items()):
                 state['conversations'][key] = [m for m in history if m['created'] > now - 30 * 86400][-200:]
             for job in state['jobs'].values():
@@ -396,8 +435,29 @@ class Worker:
         await self.service.store.transaction(clean)
 
     async def run(self):
+        failures = 0
+        while not self.stopping.is_set():
+            try:
+                if failures:
+                    # _run has already cancelled/joined its tasks. No surviving
+                    # dispatcher can overlap this recovery in the single process.
+                    await self.recover()
+                await self._run()
+                return
+            except DatabaseUnavailable:
+                failures += 1
+                logging.getLogger(__name__).warning('worker_storage_unavailable attempt=%s', failures)
+                if failures >= 5:
+                    raise
+                try:
+                    await asyncio.wait_for(self.stopping.wait(), min(30, 2 ** failures))
+                except TimeoutError:
+                    pass
+
+    async def _run(self):
         tasks = set()
         last_cleanup = last_reconcile = 0
+        last_assignments = self.service.clock()
         try:
             while not self.stopping.is_set():
                 if len(tasks) < 4:
@@ -406,12 +466,22 @@ class Worker:
                         if job:
                             task = asyncio.create_task(self.run_job(job))
                             tasks.add(task)
-                            task.add_done_callback(tasks.discard)
+                            def finished(task):
+                                tasks.discard(task)
+                                if not task.cancelled() and task.exception():
+                                    logging.getLogger(__name__).warning('worker_task_failed type=%s', type(task.exception()).__name__)
+                            task.add_done_callback(finished)
                 state = await self.service.snapshot()
                 for box in state['outbox'].values():
                     if box['status'] == 'pending':
                         await self.dispatch(box['id'])
                 now = self.service.clock()
+                if now - last_assignments >= 60:
+                    try:
+                        await self.refresh_assignments()
+                    except Exception as exc:
+                        logging.getLogger(__name__).warning('assignment_refresh_failed type=%s', type(exc).__name__)
+                    last_assignments = now
                 if now - last_reconcile > 20:
                     for box in state['outbox'].values():
                         if box['status'] == 'unknown' and box.get('message_id'):
