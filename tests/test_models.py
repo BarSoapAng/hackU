@@ -57,6 +57,19 @@ def test_empty_vault_does_not_call_a_provider():
     openai.responses.create.assert_not_called()
 
 
+@pytest.mark.parametrize('preference', ['Reply in one message.', 'Use up to three short texts when natural.'])
+def test_project_message_style_reaches_model_with_source_citations(preference):
+    nemotron, openai = clients()
+    text = 'Open at nine. [hours.md > Opening]<next_message>See you there!'
+    openai.responses.create.return_value = response(text)
+    result = asyncio.run(ModelGateway(nemotron, openai).answer(preference, [],
+        [{'filename': 'hours.md', 'heading': 'Opening', 'text': 'Open at nine.'}], 'When?'))
+    request = openai.responses.create.call_args.kwargs
+    assert request['input'][1]['content'] == 'Project preferences:\n' + preference
+    assert 'honor a single-message preference' in request['input'][0]['content']
+    assert result == text
+
+
 def test_context_trimming_keeps_question_and_current_source():
     nemotron, openai = clients()
     openai.responses.create.return_value = response()

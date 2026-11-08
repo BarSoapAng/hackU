@@ -28,6 +28,30 @@ The durable deduplication identity is the body's event `id`; `message.id` is als
 
 The first journey must verify the schema against a real signed inbound event. The schema marks `receivedBy` optional; V1 intentionally ignores events without it because the correct sender line cannot safely be inferred.
 
+## Multiple texts per reply
+
+Photon supports separate text sends to an existing direct Space with an active
+assignment. This uses the existing message-send API, not an assumed batch or
+atomic-sequence API. Each reply can contain up to three messages. The first
+retains the event's idempotency key; later bubbles use `EVENT:part:1` and
+`EVENT:part:2`. The worker waits for `delivered`/`read` confirmation before
+submitting the next bubble. `dispatched` and `accepted` trigger status lookups;
+they are not delivery proof. Multi-text replies get two quick initial lookups,
+then the existing bounded backoff. No uncertain submission is blindly replayed.
+
+The encrypted outbox persists the remaining texts and delivered count. Each
+bubble rechecks routing, assignment, source versions, and vault expiry before
+sending. A failure, navigation change, or changed source stops the remaining
+bubbles. A missing message ID after an ambiguous send leaves that sequence
+stopped. Delivery checks for an earlier bubble cannot advance a later bubble.
+Other replies wait behind an earlier active sequence; permanently unresolved
+sequences do not block the conversation forever. Vault links are appended only
+to the final bubble. Existing single-message outbox records remain compatible.
+
+Mocked tests cover actual Photon request encoding, status polling, per-bubble
+idempotency, restart recovery, partial history, cancellation, and stale lookup
+races. No unsolicited live test messages were sent.
+
 ## Enrollment
 
 Use `GET /projects/{id}/platforms/imessage/assignments`, following all pages and excluding released rows. Reuse an active normalized handle before creating. Count all active assignments, including unsupported email assignments, against the configured 25-seat cap. Photon remains the final capacity authority.

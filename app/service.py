@@ -80,6 +80,12 @@ def revoke_capability(state, cap):
     state['delivery_material'].pop(cap['id'], None)
 
 
+def split_messages(text):
+    parts = [part.strip() for part in text.split('<next_message>') if part.strip()]
+    # Keep excess content in the final bubble rather than dropping it.
+    return parts[:2] + ['\n\n'.join(parts[2:])] if len(parts) > 3 else (parts or [''])
+
+
 def cancel_outbox(state, outbox):
     if outbox['status'] in ('pending', 'submitting', 'unknown'):
         outbox['status'] = 'unknown' if outbox['status'] in ('submitting', 'unknown') else 'cancelled'
@@ -390,12 +396,14 @@ class Service:
             return await self.store.transaction(execute)
 
     def _outbox(self, state, job, text, caps, versions, now):
+        messages = split_messages(text)
         outbox = {'id': job['id'], 'user': job['user'], 'revision': job['revision'], 'created': now,
                   'status': 'pending', 'key': job['id'], 'space_id': job['space_id'], 'agent_id': job['agent_id'],
                   'destination': job['destination'], 'project': job['selected'] if job['mode'] == 'customer' else job['focus'],
                   'capabilities': caps, 'versions': versions, 'attempts': 0,
+                  'parts': len(messages), 'delivered_parts': 0,
                   'assignment': job.get('assignment'), 'received_at': job.get('received_at', job['created'])}
-        outbox['payload'] = self.keys.encrypt({'text': text}, f'outbox:{job["id"]}')
+        outbox['payload'] = self.keys.encrypt({'text': messages[0], 'remaining': messages[1:]}, f'outbox:{job["id"]}')
         state['outbox'][job['id']] = outbox
 
     def _complete(self, state, job, text, now, versions=None):
@@ -405,6 +413,7 @@ class Service:
                 text += f'\nAgent code: {step["result"]["code"]}\nShare your agent:\n{self.share_url(step["result"])}'
             if step['name'] == 'issue_vault_link' and 'capability' in step.get('result', {}):
                 text = text.replace(step['result']['capability'], '')
+        text = '<next_message>'.join(split_messages(text))
         versions = versions or {}
         if not source_versions_current(state, versions):
             raise DomainError('Sources are updating. Please ask again shortly.', 409)
@@ -427,8 +436,10 @@ class Service:
             state['capabilities'][cap_id]['outbox'] = job['id']
         conversation = f'{job["user"]}:builder' if job['mode'] == 'builder' else f'{job["user"]}:project:{job["selected"]}'
         history = state['conversations'].setdefault(conversation, [])
-        history.extend([{'role': 'user', 'content': job['question'], 'created': now},
-                        {'role': 'assistant', 'content': text + ('\n[vault link issued]' if caps else ''), 'created': now, 'outbox': job['id']}])
+        history.append({'role': 'user', 'content': job['question'], 'created': now})
+        messages = split_messages(text)
+        history.extend({'role': 'assistant', 'content': part + ('\n[vault link issued]' if caps and index == len(messages) - 1 else ''),
+                        'created': now, 'outbox': job['id'], 'part': index} for index, part in enumerate(messages))
         state['conversations'][conversation] = [m for m in history if m['created'] > now - 30 * 86400][-200:]
         job.update(status='completed', completed=now)
 
@@ -445,7 +456,8 @@ class Service:
         conversation = f'{job["user"]}:builder' if job['mode'] == 'builder' else f'{job["user"]}:project:{job["selected"]}'
         return [{'role': m['role'], 'content': m['content']} for m in state['conversations'].get(conversation, [])
                 if m['created'] > self.clock() - 30 * 86400 and (m['role'] != 'assistant' or (
-                    state['outbox'].get(m.get('outbox'), {}).get('status') == 'sent'
+                    (state['outbox'].get(m.get('outbox'), {}).get('status') == 'sent'
+                     or m.get('part', 0) < state['outbox'].get(m.get('outbox'), {}).get('delivered_parts', 0))
                     and state['jobs'].get(m.get('outbox'), {}).get('status') != 'failed'
                     and not ('vault' in m['content'].lower() and re.search(r'\b[0-9a-f]{32}\b', m['content']))
                     # Exclude legacy model echoes too, without deleting the conversation audit.

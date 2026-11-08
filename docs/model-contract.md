@@ -26,6 +26,17 @@ the server appends the fresh full HTTPS vault URL outside model context. Histori
 failure notices and old ID-only vault replies are excluded from model context while
 remaining in the stored conversation audit.
 
+Acorn may choose one to three texts per model reply, separating them internally
+with `<next_message>` on its own line. Project agents default to one text; their
+saved instructions can encourage up to three short texts or require one message.
+The builder sees the current instructions and can update this style through
+`update_instructions`, preserving the agent's other preferences. This is a model
+preference, while the server enforces the maximum of three messages. Ordinary
+paragraphs do not cause splitting. Excess segments are merged into the third
+message without losing content. Separators never reach Photon; every bubble
+still passes through plain-text formatting. Only delivered bubbles enter future
+model context. Each factual bubble should carry its own source citation.
+
 Haystack's `OpenAIDocumentEmbedder` and `OpenAITextEmbedder` both use the OpenAI endpoint and the same dimensions. Document calls accept at most 32 chunks, so each adapter call makes one bounded embedding batch. The worker reserves each batch's tokens first. Query embedding tokens also count toward the deployment budget. Missing, nonfinite, zero, or wrong-dimension embeddings cannot be marked ready. Haystack's raw provider-error logger is disabled to avoid logging document bodies from error responses. Set `HAYSTACK_TELEMETRY_ENABLED=false` in the runtime environment. Tokenizer data must be cached during dependency preparation so indexing does not depend on a first-request download.
 
 Pinned and tested Python dependencies: `openai==2.15.0`, `haystack-ai==3.4.1`, `tiktoken==0.14.0`.
