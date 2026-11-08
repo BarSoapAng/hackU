@@ -167,7 +167,8 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
         values = {'__NONCE__': nonce, '__NAME__': project['name'], '__CODE__': project['code'], '__DESTINATION__': destination}
         page = re.sub(r'__(?:NONCE|NAME|CODE|DESTINATION)__', lambda match: html.escape(values[match[0]], quote=True), page)
         return HTMLResponse(page, headers={'Content-Security-Policy':
-            f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
+            f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}' https://db.onlinewebfonts.com https://fonts.googleapis.com; "
+            "font-src https://db.onlinewebfonts.com https://fonts.gstatic.com; "
             "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"})
 
     @app.post('/api/sprouts/{code}/connect')

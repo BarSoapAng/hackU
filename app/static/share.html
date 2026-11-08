@@ -5,38 +5,52 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <meta property="og:title" content="Chat with __NAME__ on Hypha">
-  <meta property="og:description" content="A little Sprout, right in your messages.">
+  <meta property="og:description" content="A little knowledge. A conversation away. Connect with this Sprout on iMessage.">
   <title>Meet __NAME__ · Hypha</title>
+  <link href="https://db.onlinewebfonts.com/c/4a373e70cd01dec089c1dd1185ceba51?family=Maison+Neue+Bold" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;display=swap" rel="stylesheet">
   <style nonce="__NONCE__">
-    :root{font-family:system-ui,sans-serif;color:#233b2b;background:#f5f2e9;color-scheme:light}
-    *{box-sizing:border-box}body{margin:0;padding:24px}main{max-width:460px;margin:8vh auto;background:#fffdf7;padding:32px;border:1px solid #dfdfcf;border-radius:24px}
-    .mascot{font-size:42px}h1{font-size:28px;letter-spacing:-1px;margin:18px 0 12px;overflow-wrap:anywhere}p{line-height:1.6}.muted{color:#586652;font-size:14px}
-    label{display:block;font-weight:600;margin:24px 0 8px}input,button,.button{font:inherit;border:1px solid #aebda6;border-radius:12px;padding:14px;width:100%}
-    input{background:white;margin-bottom:12px}button,.button{display:block;text-align:center;background:#31583b;color:white;cursor:pointer;text-decoration:none}
-    button:disabled{opacity:.6;cursor:wait}.secondary{background:transparent;color:#31583b;margin-top:12px}code{font-family:ui-monospace,monospace}
-    #status{min-height:24px;color:#755225}#ready{margin-top:24px}[hidden]{display:none!important}:focus-visible{outline:3px solid #9bb379;outline-offset:3px}
+    :root{font-family:"DM Sans",sans-serif;color:#3b291f;background:#faf8f5;color-scheme:light;-webkit-font-smoothing:antialiased}
+    *{box-sizing:border-box}body{margin:0;min-height:100svh;display:flex;flex-direction:column;padding:0 28px}
+    .site-header{display:flex;align-items:center;gap:10px;width:100%;max-width:1120px;margin:0 auto;padding:28px 0;border-bottom:1px solid #e5dfd9}
+    .brand,h1,h2{font-family:"Maison Neue Bold",sans-serif;font-weight:700;letter-spacing:-.04em}.brand{font-size:25px;line-height:1}
+    main{width:100%;max-width:440px;margin:auto;padding:64px 0}h1{font-size:clamp(36px,6vw,48px);line-height:1.08;margin:16px 0;overflow-wrap:anywhere}h2{font-size:26px;line-height:1.2;margin:0 0 12px}
+    p{line-height:1.65;margin:0 0 20px}.eyebrow{font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#746b64;margin:0}.intro{color:#746b64;margin-bottom:32px}.muted{color:#746b64;font-size:14px}
+    label{display:block;font-size:14px;font-weight:500;margin:0 0 10px}input,button,.button{font:inherit;border:1px solid #d6cec6;border-radius:8px;padding:15px 16px;width:100%;min-height:52px}
+    input{background:#fff;color:inherit;margin-bottom:12px}input::placeholder{color:#847a72}button,.button{display:block;text-align:center;background:#3b291f;border-color:#3b291f;color:white;cursor:pointer;text-decoration:none;font-weight:500;line-height:1.4}
+    button:hover,.button:hover{background:#514035}button:disabled{opacity:.6;cursor:wait}.secondary{background:transparent;border-color:#d6cec6;color:#3b291f;margin-top:12px}.secondary:hover{background:#f0ebe5}
+    code{font-family:ui-monospace,monospace;overflow-wrap:anywhere}#destination{overflow-wrap:anywhere}#ready .muted{margin-top:20px}
+    #status{min-height:24px;margin:20px 0 0;font-size:14px;overflow-wrap:anywhere}[hidden]{display:none!important}:focus-visible{outline:2px solid #3b291f;outline-offset:4px}
+    footer{width:100%;max-width:1120px;margin:0 auto;padding:22px 0;border-top:1px solid #e5dfd9;color:#746b64;font-size:12px;text-align:center}
+    @media(max-width:480px){body{padding:0 24px}.site-header{padding:24px 0}main{padding:44px 0}}
   </style>
 </head>
 <body>
+<header class="site-header">
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21v-8M12 17C6 17 3 14 3 8c6 0 9 3 9 9ZM12 13c0-6 3-10 9-10 0 6-3 10-9 10ZM8 21h8"/></svg>
+  <span class="brand">Hypha</span>
+</header>
 <main data-code="__CODE__" data-destination="__DESTINATION__">
-  <div class="mascot" aria-hidden="true">🐿️</div>
-  <p class="muted">A little introduction from Hypha</p>
+  <p class="eyebrow">You’re invited</p>
   <h1>Meet __NAME__</h1>
-  <p>This Sprout is a text away. We’ll open Messages with your first message ready to send.</p>
+  <p class="intro">A little knowledge. A conversation away.<br>Connect with this Sprout, right in iMessage.</p>
   <form id="connect">
     <label for="phone">Your iMessage number</label>
-    <input id="phone" type="tel" autocomplete="tel" maxlength="32" placeholder="+1 204 555 0123" required>
-    <p class="muted">Use the number you text from, including its country code. This connects it to the Sprout; it doesn’t send a message.</p>
+    <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="32" placeholder="+1 204 555 0123" aria-describedby="phone-hint" required>
+    <p id="phone-hint" class="muted">Include your country code. We’ll connect your number and open Messages with your first text ready. You choose when to send it.</p>
     <button id="submit" type="submit">Connect &amp; open Messages</button>
   </form>
   <div id="ready" hidden>
+    <h2>You’re ready to connect.</h2>
     <a id="open" class="button">Open in Messages</a>
     <p class="muted">Tap Send when you’re ready. If your device doesn’t fill in the message, copy <code id="command"></code> and send it to <span id="destination"></span>.</p>
     <button id="copy" class="secondary" type="button">Copy first message</button>
     <button id="change" class="secondary" type="button">Use a different number</button>
   </div>
   <p id="status" role="status" aria-live="polite"></p>
+  <noscript><p class="muted">Enable JavaScript to connect your number and open this Sprout in Messages.</p></noscript>
 </main>
+<footer>Your knowledge, ready to sprout.</footer>
 <script nonce="__NONCE__">
 (() => {
   const main = document.querySelector('main'), form = document.getElementById('connect');
