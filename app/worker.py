@@ -270,11 +270,16 @@ class Worker:
 
     def _reaction_box(self, state, job, emoji, action, now):
         identifier = f'{job["id"]}:reaction:{action}'
+        added = state['outbox'].get(f'{job["id"]}:reaction:add', {})
+        if action == 'remove' and (added.get('status') != 'sent' or not added.get('message_id')):
+            return None
         if identifier not in state['outbox']:
             self.service._outbox(state, dict(job, id=identifier), '', [], {}, now)
             box = state['outbox'][identifier]
             box.update(origin_job=job['id'], reaction={'emoji': emoji, 'action': action,
                 'target': job['message_id']}, project=job['selected'] if job['mode'] == 'customer' else None)
+            if action == 'remove':
+                box['reaction']['reaction_id'] = added['message_id']
         return identifier
 
     async def react_to_turn(self, job):
@@ -555,16 +560,22 @@ class Worker:
             if not box:
                 return
             body = self.service.keys.decrypt(box['payload'], f'outbox:{box["id"]}')
+            error_code = http_status = None
             try:
                 async with asyncio.timeout(10):
                     part = box.get('delivered_parts', 0)
                     key = f'{box["key"]}:part:{part}' if part else box['key']
                     if reaction := box.get('reaction'):
+                        options = {'reaction_id': reaction.get('reaction_id')} if reaction['action'] == 'remove' else {}
                         result = await self.photon.react(box['space_id'], box['agent_id'], reaction['target'],
-                            reaction['emoji'], reaction['action'], key)
+                            reaction['emoji'], reaction['action'], key, **options)
                     else:
                         result = await self.photon.send(box['space_id'], box['agent_id'], body['text'], key)
             except PhotonError as error:
+                error_code, http_status = error.code, error.status
+                if box.get('reaction'):
+                    logging.getLogger(__name__).warning('reaction_delivery_failed operation=%s code=%s http_status=%s',
+                                                        box['id'], error_code, http_status)
                 result = SendResult('failed' if error.status is not None and 400 <= error.status < 500
                                     and error.status not in (408, 409) else 'unknown')
             except Exception:
@@ -575,6 +586,8 @@ class Worker:
                 status = getattr(result, 'status', 'unknown')
                 current['provider_status'] = status
                 current['message_id'] = getattr(result, 'message_id', None)
+                if error_code:
+                    current.update(provider_error_code=error_code, http_status=http_status)
                 current['status'] = 'sent' if status in ('delivered', 'read') else ('failed' if status == 'failed' else 'unknown')
                 if current['status'] == 'sent':
                     self._delivered(state, current, now)

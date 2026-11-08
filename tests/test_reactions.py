@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from app.photon import PhotonClient, SendResult
+from app.photon import PhotonClient, PhotonError, SendResult
 from app.reactions import JevClient, JevError
 from app.service import DomainError
 from test_service import create_project, environment, inbound
@@ -51,11 +51,31 @@ async def test_photon_reaction_contract(action):
         assert request.method == 'POST' and request.url.path == '/v1/projects/project/messages'
         assert request.headers['Idempotency-Key'] == f'turn:reaction:{action}'
         assert json.loads(request.content) == {'spaceId': 'space', 'senderId': 'agent',
-            'parentMessageId': 'incoming', 'content': {'type': 'reaction', 'reaction': '👀', 'action': action}}
+            'parentMessageId': 'reaction-to-remove' if action == 'remove' else 'incoming',
+            'content': {'type': 'message.delete'} if action == 'remove' else {'type': 'reaction', 'reaction': '👀'}}
         return httpx.Response(202, json={'id': 'reaction', 'status': 'accepted'})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
         assert await PhotonClient(http, 'project', 'synthetic').react('space', 'agent', 'incoming',
-            '👀', action, f'turn:reaction:{action}') == SendResult('accepted', 'reaction')
+            '👀', action, f'turn:reaction:{action}', reaction_id='reaction-to-remove') == SendResult('accepted', 'reaction')
+
+
+@pytest.mark.parametrize('reaction_id', [None, 'incoming'])
+async def test_removal_never_deletes_incoming_message(reaction_id):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: pytest.fail('Unexpected write'))) as http:
+        with pytest.raises(ValueError, match='confirmed reaction'):
+            await PhotonClient(http, 'project', 'synthetic').react('space', 'agent', 'incoming',
+                '👀', 'remove', 'remove-key', reaction_id=reaction_id)
+
+
+@pytest.mark.parametrize('code', ['UNSUPPORTED_CONTENT', 'VALIDATION_FAILED'])
+async def test_photon_rejection_is_preserved_without_private_provider_detail(code):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(422,
+            json={'code': code, 'detail': 'private message contents'}))) as http:
+        with pytest.raises(PhotonError) as error:
+            await PhotonClient(http, 'project', 'synthetic').react('space', 'agent', 'incoming',
+                '❤️', 'add', 'add-key')
+    assert error.value.code == f'PHOTON_{code}'
+    assert 'private' not in str(error.value)
 
 
 async def reaction_environment(emoji='❤️', only=True):
@@ -99,6 +119,18 @@ async def test_unconfirmed_social_reaction_falls_back_to_text(result):
     assert env.models.builder.await_count == 1
 
 
+async def test_unsupported_reactions_record_reason_and_preserve_reply():
+    env = await reaction_environment()
+    env.photon.react.side_effect = PhotonError('PHOTON_UNSUPPORTED_CONTENT', 422)
+    await turn(env)
+    state = await env.service.snapshot()
+    box = state['outbox']['thanks:reaction:add']
+    assert box['status'] == 'failed'
+    assert box['provider_error_code'] == 'PHOTON_UNSUPPORTED_CONTENT' and box['http_status'] == 422
+    assert state['outbox']['thanks']['status'] == 'pending'
+    assert env.models.builder.await_count == 1
+
+
 @pytest.mark.parametrize('error', [JevError('synthetic'), TimeoutError()])
 async def test_decision_error_preserved_and_normal_reply_continues(error):
     env = await reaction_environment()
@@ -128,6 +160,7 @@ async def test_eyes_removed_only_after_last_bubble_and_cleanup_survives_restart(
     await env.worker.dispatch('thanks:reaction:remove')
     assert env.photon.react.await_count == 2
     assert env.photon.react.call_args.args[2:] == ('message-thanks', '👀', 'remove', 'thanks:reaction:remove')
+    assert env.photon.react.call_args.kwargs == {'reaction_id': 'reaction-message'}
 
 
 async def test_recovery_reuses_decision_and_never_replays_ambiguous_add():

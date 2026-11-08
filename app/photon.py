@@ -255,19 +255,30 @@ class PhotonClient:
         return result
 
     async def react(self, space_id: str, agent_id: str, message_id: str,
-                    emoji: str, action: str, idempotency_key: str) -> SendResult:
+                    emoji: str, action: str, idempotency_key: str, *, reaction_id: str | None = None) -> SendResult:
         if (not all((space_id, agent_id, message_id, idempotency_key))
                 or emoji not in ('👀', '👍', '❤️') or action not in ('add', 'remove')):
             raise ValueError('A reaction requires its persisted target, identity and supported content.')
+        if action == 'remove' and (not reaction_id or reaction_id == message_id):
+            raise ValueError('Removal requires the confirmed reaction message ID, never the incoming message ID.')
         try:
             response = await self._request('POST', '/messages',
                 headers={'Idempotency-Key': idempotency_key},
-                json={'spaceId': space_id, 'senderId': agent_id, 'parentMessageId': message_id,
-                      'content': {'type': 'reaction', 'reaction': emoji, 'action': action}})
+                json={'spaceId': space_id, 'senderId': agent_id,
+                      'parentMessageId': reaction_id if action == 'remove' else message_id,
+                      'content': {'type': 'message.delete'} if action == 'remove' else
+                                 {'type': 'reaction', 'reaction': emoji}})
         except httpx.TransportError:
             return SendResult('unknown')
         if response.status_code >= 500 or response.status_code in (408, 409):
             return SendResult('unknown')
+        if response.status_code == 422:
+            try:
+                code = response.json().get('code')
+            except (ValueError, AttributeError):
+                code = None
+            if code in ('UNSUPPORTED_CONTENT', 'VALIDATION_FAILED'):
+                raise PhotonError(f'PHOTON_{code}', 422)
         self._check(response)
         return self._result(response)
 

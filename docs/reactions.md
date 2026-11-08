@@ -1,5 +1,12 @@
 # Message reactions
 
+Live verification on 2026-11-08 found that this project's iMessage Space rejects
+both eyes and heart reactions with HTTP 422 `UNSUPPORTED_CONTENT` ("This content
+cannot currently be sent to this Space."). Jev is returning reaction decisions,
+but this Photon connection currently cannot deliver them. Ordinary replies
+continue. Reactions require provider support for this Space or a separately
+configured supported transport; restarting the backend does not enable it.
+
 Set `TYPESAFE_API_KEY` on the backend to enable Jev decisions. Without the key,
 ordinary text replies continue without reactions. Hypha enables reactions
 by default; existing and new Sprouts default to disabled. Owners can ask
@@ -27,9 +34,12 @@ text reply. Questions, instructions, and agreement to a proposed action still
 need processing. A failed or unconfirmed reaction falls back to a text reply.
 Commands, rejected messages, and voice-note jobs are excluded.
 
-Photon reactions use the existing message endpoint with `parentMessageId` set to
-the incoming message ID and content `{type: "reaction", reaction: emoji,
-action: "add" | "remove"}`. Separate outbox records and stable keys
+Photon's deployed schema uses the existing message endpoint with `parentMessageId`
+set to the incoming message ID and content `{type: "reaction", reaction: emoji}`.
+The deployed schema forbids `action`, despite the GitHub schema requiring it.
+Cleanup sends `{type: "message.delete"}` targeting the confirmed reaction message
+ID; it refuses to target the incoming message. Live cleanup remains unverified
+because the provider rejects additions. Separate outbox records and stable keys
 `EVENT:reaction:add` / `EVENT:reaction:remove` track each operation. Eyes removal
 is scheduled after final text delivery, failure, cancellation, or an expired
 active turn. Removal remains tied to the original message after navigation and
@@ -43,11 +53,13 @@ of visible delivery. These are the same provider uncertainty limits as text
 delivery, and operation status stays in the outbox for inspection.
 
 Mocked tests cover the decision policy, HTTP encoding, Sprout ownership,
-social-only history, fallback, deduplication, recovery, and eyes cleanup. No live
-Jev or Photon requests were made for verification. Actual reaction visibility
-and removal on the shared iMessage line remain a live verification step.
+social-only history, fallback, deduplication, recovery, and eyes cleanup. Rejected
+Photon sends retain a safe error code and HTTP status in the outbox and log
+reaction delivery failures without provider bodies or private text. Live tests
+used the existing user's failed reaction target and recorded the rejected
+operations durably. No extra live Jev experiments were run.
 
 Contracts: [TypeSafe System One](https://docs.typesafe.ai/api/system-one),
 [Noul](https://docs.typesafe.ai/primitives/noul),
 [Choice](https://docs.typesafe.ai/primitives/choice), and
-[Photon OpenAPI](https://github.com/photon-hq/api/blob/main/openapi/openapi.json).
+[deployed Photon OpenAPI](https://api.photon.codes/openapi.json).
