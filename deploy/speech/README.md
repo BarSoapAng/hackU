@@ -1,8 +1,27 @@
 # English voice notes on the existing Brev server
 
-Implemented behind `VOICE_ENABLED=false`. No speech container has been built or
-started, and no GPU capacity or real iMessage recording has been verified for
-this feature. Run the following rollout only when explicitly requested.
+Voice is enabled in the local demo following the requested 2026-11-08 rollout.
+The separate speech container runs on the existing Brev server. Windows reaches
+it through a private SSH forward on local port **8003**; port 8002 remains the
+dashboard. New installations still default to `VOICE_ENABLED=false`.
+
+The live gate passed with a real 3.14-second iMessage CAF recording: 633 ms queue
+wait, 1,043 ms download/decode/transcription, one generation, and one text reply
+confirmed delivered by Photon. A synthetic two-minute recording also passed
+while the builder handled two concurrent long-context requests; minimum sampled
+GPU free memory was 2,456 MiB. Builder capacity was unchanged. Project citations
+and multi-text voice replies have offline coverage; their live checks remain
+available for a later demo.
+
+Windows uses FFmpeg 9.0.2 from the ignored `.local/ffmpeg` directory, selected by
+`FFMPEG_BINARY` in the private `.env`. Its vendor archive SHA-256 was verified.
+The backend, ngrok, and WSL tunnel must remain running for the local demo.
+
+The first canary exposed an inaccessible temporary directory created by sandbox
+tests. That turn expired and received one failure notice. Tests now isolate
+their audio directories; runtime file creation fails promptly on permission
+errors. The successful fresh canary was processed normally without replaying
+the failed turn. Repeat deployment actions below only when requested.
 
 The backend accepts Photon `voice` events and reserves a durable turn before
 acknowledging the webhook. Its worker authenticates attachment downloads,
@@ -24,8 +43,11 @@ the existing text outbox, citations, read receipts, and one-to-three bubbles.
 - Authenticated `GET /readyz` returns `{"ready":true,"busy":false}` after
   model loading; 503 before readiness. Busy transcription rejects another
   recording with 503 and `Retry-After: 1`.
-- NVIDIA runtime image `nvcr.io/nvidia/nemo:25.11` (NeMo Speech 2.6.0,
+- NVIDIA runtime image `nvcr.io/nvidia/nemo:25.11`, pinned by amd64 digest in
+  the Dockerfile (the image reports NeMo Speech 2.6.0rc0,
   PyTorch 2.9.0a0, CUDA 13.0.1); FastAPI 0.162.2 and Uvicorn 0.54.0.
+  `PYTHONPATH` includes the image's bundled `/opt/NeMo` source, which is needed
+  when the application working directory differs from the image's default.
 - Model `nvidia/nemotron-speech-streaming-en-0.6b`, `.nemo` checkpoint at
   revision `ebe59e5a817142986528bbbee5dba8db7b38ed50`. Loaded once on CUDA
   and used through NeMo's recorded-file `transcribe` interface, batch size 1.
@@ -91,6 +113,14 @@ Sources: [NVIDIA model card](https://huggingface.co/nvidia/nemotron-speech-strea
    and check for OOMs, slow responses, restarts, and failures. Do not enable
    voice if the two services cannot coexist reliably; record the measured
    peak memory and additional headroom required. Do not provision another VM.
+
+   `verify.py` performs these speech/auth/concurrent-builder checks and samples
+   GPU memory without printing transcripts. Supply a normalized synthetic WAV
+   containing the expected word (default `bakery`):
+
+   ```bash
+   python3 verify.py --audio /tmp/synthetic-voice.wav --expected-word bakery
+   ```
 
 5. Set `TRANSCRIPTION_URL=http://127.0.0.1:8002` and its credential, then
    temporarily set `VOICE_ENABLED=true` for a controlled real iMessage test

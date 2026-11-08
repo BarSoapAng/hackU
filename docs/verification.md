@@ -9,7 +9,7 @@ This report distinguishes mocked behavior from deployed behavior.
 | First-journey implementation | Implemented: verified ingestion, routing, initial Hypha tools, encrypted notes-editing capabilities, editor, indexing, Sprout Q&A, budgets, durable jobs/outbox |
 | First-journey mocked verification | Passing; independent subagents wrote provider, API, journey, authorization, race, and recovery tests |
 | Live integration and two-person journey | Provider/database checks and the owner’s real Sprout/notes-link exchange passed; note upload/Q&A and second-participant checks remain pending |
-| Voice notes | Implemented behind a disabled flag; offline voice/service tests and reviewer checks pass. FFmpeg decoding with real iMessage audio, NeMo GPU startup/capacity, and the real voice journey remain rollout gates |
+| Voice notes | Enabled in the local demo on 2026-11-08 after real iMessage CAF download/decode/transcription and a Photon-confirmed text reply. Two-minute speech and concurrent builder/GPU checks passed; live project citations/multipart checks remain pending. See [speech rollout](../deploy/speech/README.md) |
 | Extensions after the live journey | Deferred as required by the plan: Sprout rename/deletion, conversational note tools, general Photon attachment imports, explicit reindex endpoint, broader natural-language navigation |
 | Deployment | Local Windows backend and ngrok HTTPS tunnel running; Photon webhook enabled; production deployment remains pending |
 

@@ -75,13 +75,16 @@ def main():
         assert result['choices'][0]['message']['content'].strip() == str(digit)
         print(json.dumps({'check': 'concurrent_builder', 'seconds': round(time.monotonic() - started, 2)}), flush=True)
 
-    stop, memory = threading.Event(), []
+    stop, memory, monitoring_errors = threading.Event(), [], []
     def monitor():
-        while not stop.is_set():
-            row = subprocess.check_output(['nvidia-smi', '--query-gpu=memory.used,memory.free',
-                                           '--format=csv,noheader,nounits'], text=True)
-            memory.append(tuple(int(value.strip()) for value in row.strip().split(',')))
-            stop.wait(.25)
+        try:
+            while not stop.is_set():
+                row = subprocess.check_output(['nvidia-smi', '--query-gpu=memory.used,memory.free',
+                                               '--format=csv,noheader,nounits'], text=True, timeout=5)
+                memory.append(tuple(int(value.strip()) for value in row.strip().split(',')))
+                stop.wait(.25)
+        except Exception as error:
+            monitoring_errors.append(type(error).__name__)
     watcher = threading.Thread(target=monitor)
     watcher.start()
     try:
@@ -96,6 +99,8 @@ def main():
         if memory:
             print(json.dumps({'peak_gpu_used_mib': max(row[0] for row in memory),
                               'minimum_gpu_free_mib': min(row[1] for row in memory)}), flush=True)
+    if monitoring_errors or not memory:
+        raise RuntimeError('GPU monitoring failed; capacity was not verified')
     print('PASS: speech and builder coexistence', flush=True)
 
 

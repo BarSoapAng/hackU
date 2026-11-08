@@ -5,6 +5,7 @@ import json
 import math
 import os
 from pathlib import Path
+import secrets
 import tempfile
 import wave
 
@@ -117,7 +118,9 @@ class Transcriber:
 async def prepare_audio(photon, attachment_id, transcriber):
     source = target = None
     try:
-        with tempfile.NamedTemporaryFile(prefix='note-', suffix='.audio', dir=audio_directory(), delete=False) as file:
+        # Windows tempfile retries PermissionError as if it were a name collision.
+        # Exclusive creation fails promptly instead of blocking the worker loop.
+        with (audio_directory() / f'note-{secrets.token_hex(16)}.audio').open('xb') as file:
             source = Path(file.name)
         target = source.with_suffix('.wav')
         metadata = await photon.download_audio(attachment_id, source)

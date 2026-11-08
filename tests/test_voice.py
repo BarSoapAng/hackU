@@ -2,7 +2,9 @@ import asyncio
 from dataclasses import replace
 import io
 import json
+import os
 from pathlib import Path
+import tempfile
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 import wave
@@ -442,6 +444,28 @@ async def test_temporary_recordings_are_removed(monkeypatch, tmp_path, failure):
     (tmp_path / 'unrelated.txt').write_text('keep')
     clean_audio()
     assert [p.name for p in tmp_path.iterdir()] == ['unrelated.txt']
+
+
+@pytest.mark.asyncio
+async def test_unwritable_audio_directory_fails_before_download(monkeypatch):
+    # Simulate an OS denial through both file-creation APIs. The old Windows
+    # tempfile path retries this as a collision and eventually raises FileExistsError.
+    path_open, os_open = Path.open, os.open
+    def deny_path(path, *args, **kwargs):
+        if path.suffix == '.audio':
+            raise PermissionError('Unwritable voice directory')
+        return path_open(path, *args, **kwargs)
+    def deny_os(path, *args, **kwargs):
+        if str(path).endswith('.audio'):
+            raise PermissionError('Unwritable voice directory')
+        return os_open(path, *args, **kwargs)
+    monkeypatch.setattr(Path, 'open', deny_path)
+    monkeypatch.setattr(os, 'open', deny_os)
+    monkeypatch.setattr(tempfile, 'TMP_MAX', 2)
+    photon = SimpleNamespace(download_audio=AsyncMock())
+    with pytest.raises(PermissionError):
+        await prepare_audio(photon, 'attachment', object())
+    photon.download_audio.assert_not_called()
 
 
 @pytest.mark.asyncio
