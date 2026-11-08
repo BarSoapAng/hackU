@@ -65,8 +65,8 @@ the reducer independently checks proposed state for:
   and current file/version references for committed chunks.
 - No resurrection of removed file IDs while indexing deduplication records
   remain; retained completed tool intents, results, and continuation bindings.
-- Four generations, three tool calls, five attempts per job, and 10/100 pending
-  turns per user/deployment; attempt and generation counters cannot decrease.
+- Four generations, three tool calls (including invalid calls), five attempts
+  per job, and 10/100 pending turns per user/deployment; counters cannot decrease.
 - A 30-day minimum for job/event/outbox deduplication, and immutable capability
   scope/expiry with irreversible revocation.
 
@@ -104,7 +104,8 @@ npm test
 Use a Node release accepted by the SDK's pinned engine range:
 `^22.23.4 || ^24.22.1 || >=26.12.1`. Local TypeScript and policy checks passed
 under the installed Node 22.14.0, but npm reported its unsupported engine; that
-does not validate host execution. Eighteen mocked Python adapter tests, 26
+does not validate host execution. Nineteen mocked Python database tests (including
+an actual-journey Python/TypeScript proposal compatibility check), 26
 service/worker scenarios, and eleven TypeScript policy tests passed; the module
 type check passed with no output.
 

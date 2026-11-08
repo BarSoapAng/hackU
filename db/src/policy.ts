@@ -107,6 +107,7 @@ export function validateCommit(expected: bigint, actual: bigint, value: string, 
     if (job.id !== id) throw new Error('invalid job identity');
     integer(job.attempts, 5);
     integer(job.generations ?? 0, 4);
+    integer(job.tool_calls ?? 0, 3);
     if (!Array.isArray(job.steps ?? []) || (job.steps ?? []).length > 3) throw new Error('tool quota exceeded');
     if (job.kind === 'turn' && ['queued', 'running'].includes(job.status)) {
       pending++;
@@ -116,7 +117,8 @@ export function validateCommit(expected: bigint, actual: bigint, value: string, 
     const old = oldJobs[id];
     if (!old) continue;
     if (job.created !== old.created || job.kind !== old.kind || job.user !== old.user ||
-        job.attempts < old.attempts || (job.generations ?? 0) < (old.generations ?? 0)) {
+        job.attempts < old.attempts || (job.generations ?? 0) < (old.generations ?? 0) ||
+        (job.tool_calls ?? 0) < (old.tool_calls ?? 0)) {
       throw new Error('job identity and attempt counters cannot be reset');
     }
     for (const step of old.steps ?? []) {

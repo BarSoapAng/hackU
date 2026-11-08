@@ -1,5 +1,9 @@
 import asyncio
+import copy
 import json
+from pathlib import Path
+import shutil
+import subprocess
 
 import httpx
 import pytest
@@ -134,3 +138,57 @@ def test_malformed_database_snapshot_is_rejected(payload):
             with pytest.raises(DatabaseUnavailable):
                 await store.read()
     asyncio.run(scenario())
+
+
+@pytest.mark.skipif(shutil.which('node') is None, reason='Node is required for the cross-language database contract check')
+def test_actual_journey_snapshots_pass_the_database_reducer_policy():
+    from test_service import create_project, environment, inbound, issue_capability
+
+    async def scenario():
+        env = await environment()
+        transitions = []
+        compare = env.service.store.compare_and_swap
+
+        async def checked(expected, state):
+            _, before = await env.service.store.read()
+            committed = await compare(expected, state)
+            if committed:
+                transitions.append({'before': before, 'after': copy.deepcopy(state), 'now': env.clock.now})
+            return committed
+
+        env.service.store.compare_and_swap = checked
+        job, project, _ = await create_project(env)
+        token, _, _ = await issue_capability(env, job)
+        await env.service.complete(job['id'], job['claim'], 'Ready')
+        await env.worker.dispatch(job['id'])
+        file = await env.service.save_file(token, 'guide.md', '# Guide\nCurrent source')
+        await env.worker.index(await env.worker.claim('index'))
+        await env.service.admit(inbound(env, 'guest-use', '/use ' + project['code'], guest=True))
+        await env.service.admit(inbound(env, 'question', 'What is current?', guest=True))
+        await env.worker.answer(await env.worker.claim('turn'))
+        await env.worker.dispatch('question')
+        await env.service.save_file(token, 'guide.md', '# Guide\nNew source', file['id'], 1)
+        await env.worker.index(await env.worker.claim('index'))
+        env.clock.now += 31 * 86400
+        await env.worker.cleanup()
+        return transitions
+
+    script = """
+        import fs from 'node:fs';
+        import { validateCommit } from './db/src/policy.ts';
+        const rows = JSON.parse(fs.readFileSync(0, 'utf8'));
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            try {
+                validateCommit(0n, 0n, JSON.stringify(row.after), JSON.stringify(row.before), row.now);
+            } catch (error) {
+                throw new Error('Committed journey transition ' + i + ': ' + error.message);
+            }
+        }
+    """
+    result = subprocess.run(
+        [shutil.which('node'), '--experimental-strip-types', '--input-type=module', '-e', script],
+        input=json.dumps(asyncio.run(scenario())), capture_output=True, text=True,
+        cwd=Path(__file__).resolve().parents[1], timeout=15,
+    )
+    assert result.returncode == 0, result.stderr

@@ -116,6 +116,7 @@ test('completed tool results and continuation bindings survive retries unchanged
 test('generation, tool, attempt and pending-turn budgets cannot be bypassed', () => {
   for (const change of [
     (state: any) => { state.jobs.turn.generations = 5; },
+    (state: any) => { state.jobs.turn.tool_calls = 4; },
     (state: any) => { state.jobs.turn.attempts = 6; },
     (state: any) => { state.jobs.turn.steps = [{}, {}, {}, {}]; },
     (state: any) => { state.jobs.turn.attempts = -1; },
@@ -129,6 +130,10 @@ test('generation, tool, attempt and pending-turn budgets cannot be bypassed', ()
   }
   const before = initial(), next = initial();
   next.jobs.turn.generations = 0;
+  assert.throws(() => verify(next, before), /cannot be reset/);
+  next.jobs.turn.generations = before.jobs.turn.generations;
+  before.jobs.turn.tool_calls = 1;
+  next.jobs.turn.tool_calls = 0;
   assert.throws(() => verify(next, before), /cannot be reset/);
 });
 
