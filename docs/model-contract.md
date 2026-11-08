@@ -67,4 +67,10 @@ Authoritative contracts consulted:
 
 The offline implementation was verified with mocks and local transports. Separate live Nemotron verification recorded in [the deployment README](../deploy/nemotron/README.md) established the non-thinking, temperature-zero tool-call contract used here. At the user's subsequent live-setup request, the application adapters passed a Nemotron tool call, a GPT-5.6 Luna answer with low reasoning, and actual document/query embeddings. A real inbound iMessage then completed Sprout creation and notes-link issuance through Nemotron, with Photon confirming the reply delivered. Maximum-notes retrieval timing, representative grounding/abstention, dashboard upload/Q&A, and second-participant delivery remain to be verified.
 
-The live checks described above used the previous OpenAI embedding adapter. They do not establish deployment or retrieval quality for the Nemotron embedding replacement.
+The earlier full journey used the previous OpenAI embedding adapter. On 2026-11-08,
+the self-hosted Nemotron embedding replacement passed authenticated synthetic
+passage/query ranking checks on a dedicated Brev A4000 and was deployed to the
+live backend. The existing saved note was reindexed successfully in SpacetimeDB.
+Measurements and verification limits are recorded in the
+[embedding deployment README](../deploy/embeddings/README.md); representative
+grounding and a full user journey after this switch remain unverified.

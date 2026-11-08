@@ -84,7 +84,26 @@ python -m tools.local tools.verify_integrations embeddings --live
 It calls the private embedding service without invoking chat models, database
 writes, or Photon delivery.
 
-GPU memory, latency, and representative retrieval quality still require a live
-deployment measurement. A 1B model does not require another 48–80 GB GPU.
-VM billing is separate from the model; some Brev offers cannot be stopped and
-must be deleted to end compute charges.
+## Live deployment: 2026-11-08
+
+`hypha-embeddings` runs on a dedicated Brev RTX A4000 (16 GB) at the selected
+offer's $0.18/hour, or $4.32 per 24 hours. This offer cannot be stopped; delete
+the VM to end compute charges. The backend's systemd SSH tunnel connects to it
+without depending on the laptop. No NVIDIA hosted API key is used.
+
+Authenticated synthetic checks through that tunnel passed both expected note
+rankings. Query embeddings took 0.13–0.14 seconds; a batch of 16 approximately
+6,600-byte chunks took 2.32 seconds. GPU memory after these requests was 2,623 MiB
+of 15,352 MiB. These small synthetic checks do not establish representative
+grounding, concurrent capacity, or maximum-notes latency.
+
+The live backend image is `hypha-backend:nemotron-a6a8707`, also tagged as
+`hypha-backend:latest` for the existing Compose deployment. The previous image
+is retained as `hypha-backend:before-nemotron-embeddings`. Cutover explicitly
+stopped the old backend before starting its replacement. The existing saved
+note reached `ready` with 1,536-dimensional Nemotron vectors in SpacetimeDB.
+Public `/healthz` and `/notes` returned 200; unauthenticated `/api/notes` returned
+401. Source and environment backups are under `~/hypha-backups` on the backend VM.
+
+Future backend updates use the normal [Brev update procedure](../brev/README.md).
+Keep the embedding VM and its tunnel running while this adapter is configured.
