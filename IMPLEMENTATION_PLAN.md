@@ -10,11 +10,18 @@ Use:
 
 - **Python / FastAPI:** webhooks, routing, authorization, agent execution, background work, and vault dashboard.
 - **Photon:** the user's existing project and provisioned line, which supports multiple numbers. The user reports a current limit of 25 numbers, with one assigned for personal use through `+1 628-316-6196`. Verify how inbound numbers map to senders before implementing the adapter; application projects are selected by code rather than assigned their own numbers.
-- **NVIDIA:** Nemotron is required for both builder and project-agent responses. Use a small Python tool-calling workflow; NeMo Agent Toolkit is not required and is excluded from the MVP dependencies.
-- **Haystack:** document processing, embeddings, retrieval, and grounded response generation.
+- **NVIDIA Nemotron:** powers only the builder agent through NVIDIA's hosted API and a small Python tool-calling loop. No NVIDIA agent framework is required.
+- **OpenAI API:** project-agent responses use GPT-5.6 Luna with low reasoning effort; document and query embeddings also use OpenAI so project Q&A does not depend on NVIDIA.
+- **Haystack:** document processing, OpenAI embeddings, and retrieval; pass retrieved context to the OpenAI Responses API for answer generation.
 - **SpacetimeDB:** all durable application data, including Markdown and embeddings.
 
-Default generation model: `nvidia/nemotron-3-super-120b-a12b`, configurable through deployment settings to another Nemotron model. Haystack provides NVIDIA generation and embedding integrations. [NVIDIA model](https://build.nvidia.com/nvidia/nemotron-3-super-120b-a12b/playground), [Haystack integration](https://docs.haystack.deepset.ai/docs/nvidiachatgenerator)
+Builder model: `nvidia/nemotron-3-super-120b-a12b`, configurable through deployment settings to another Nemotron model. Call NVIDIA's hosted Chat Completions API at base URL `https://integrate.api.nvidia.com/v1`, with credentials from `NVIDIA_API_KEY`. Use the linked Nemotron developer repository as a reference for model usage; the MVP uses hosted inference and does not install its training stack. [NVIDIA model](https://build.nvidia.com/nvidia/nemotron-3-super-120b-a12b/playground), [Nemotron developer repository](https://github.com/NVIDIA-NeMo/nemotron)
+
+Project-agent model: `gpt-5.6-luna` through the OpenAI Responses API, explicitly setting `reasoning={"effort": "low"}` and using `OPENAI_API_KEY`. Keep builder and project-agent model settings and clients separate. Model access must be verified with the deployment account; do not silently substitute another model or provider if access is unavailable. [Official OpenAI model documentation](https://developers.openai.com/api/docs/models/gpt-5.6-luna), [Reasoning settings](https://developers.openai.com/api/docs/guides/reasoning)
+
+### Builder model integration
+
+Implement a bounded Python loop that sends builder messages and tool schemas to Nemotron, validates returned tool calls, executes the backend's scoped operations, and returns their results to the model. Reconstruct each user's bounded builder context from SpacetimeDB. Keep ownership checks, durable tool-step records, and retry budgets in the backend; resume completed operations from their stored results rather than replaying mutations. Use separate NVIDIA and OpenAI clients even if both use the same Python SDK.
 
 ## Messaging and agent behavior
 
@@ -58,6 +65,8 @@ Deleting a project requires `delete <project-code>` within five minutes of a del
 
 Give each project a default instruction template requiring concise, source-grounded answers with filename/heading citations.
 
+Generate project answers with the configured OpenAI client and GPT-5.6 Luna at low reasoning effort. Supply the selected project's current retrieved chunks and bounded user/project history on each request; use `store=false` and manage application conversation state in SpacetimeDB. Send no management tools. Handle refusal, empty output, and incomplete responses explicitly rather than treating them as completed answers.
+
 Owners may change tone, purpose, and domain instructions through iMessage. Application-enforced restrictions remain outside those editable instructions: project isolation, ownership checks, and no customer-agent management permissions. Source grounding, filename/heading citations, and abstention are soft requirements enforced through the system prompt for this MVP, not guarantees of factual correctness. Do not add a separate answer-verification model or evidence-validation pipeline for this milestone.
 
 Treat Markdown and conversation quotations as content, never as authorization to call tools or switch modes. Never create a vault editing link for a customer seeking source citations.
@@ -88,13 +97,13 @@ Restrict database access to the backend service identity. Keep application table
 
 ### RAG pipeline
 
-Use NVIDIA embeddings through Haystack, initially `nvidia/llama-3.2-nv-embedqa-1b-v2`. Store vectors in SpacetimeDB and compute cosine similarity in Python over the selected project's current, indexed chunks. This avoids introducing a second database; native vector indexing is not part of SpacetimeDB's documented index types. [Embedding integration](https://github.com/deepset-ai/haystack-integrations/blob/main/integrations/nvidia.md), [SpacetimeDB indexes](https://spacetimedb.com/docs/tables/indexes/)
+Use OpenAI `text-embedding-3-small` through Haystack's `OpenAIDocumentEmbedder` for chunks and `OpenAITextEmbedder` for queries, with the same model and dimensions for both. Store vectors in SpacetimeDB and compute cosine similarity in Python over the selected project's current, indexed chunks. This avoids introducing a second database; native vector indexing is not part of SpacetimeDB's documented index types. [Embedding model](https://developers.openai.com/api/docs/models/text-embedding-3-small), [Document embedder](https://docs.haystack.deepset.ai/docs/openaidocumentembedder), [Query embedder](https://docs.haystack.deepset.ai/docs/openaitextembedder), [SpacetimeDB indexes](https://spacetimedb.com/docs/tables/indexes/)
 
 - Accept UTF-8 `.md` files through dashboard uploads first; add Photon attachments after the first end-to-end milestone.
 - Start with 20 files per project, 128 KiB per file, 1 MiB total current text, and 1,000 chunks per project. Enforce quotas atomically across concurrent writes. Reject files whose chunk count would exceed the project limit before accepting the save.
 - Preserve headings and filenames; split into approximately 300-word chunks with 50-word overlap, additionally respecting the pinned embedding model's token limit. Use the same deterministic splitter for quota checks and indexing.
 - Store embedding model ID, dimensions, and preprocessing version. Never compare vectors from incompatible configurations; changing the embedding configuration requires reindexing.
-- Retrieve the top five chunks and prompt Nemotron to answer only when they support the answer, otherwise abstaining.
+- Retrieve the top five chunks and prompt GPT-5.6 Luna to answer only when they support the answer, otherwise abstaining, with low reasoning effort on every request.
 - Save changes immediately and exclude changed files until their new embeddings are committed.
 - Delete files from retrieval immediately.
 - Discard indexing results for superseded file versions or deleted projects.
@@ -107,8 +116,8 @@ Recheck project availability and source versions before dispatching a generated 
 Treat these as configurable starting limits, enforced before paid work is queued:
 
 - Five active projects per user and 100 across the deployment.
-- Ten accepted conversation turns per minute and 100 per day per user; 1,000 generation requests per day across the deployment, counting retries. Replayed webhook events do not consume another turn allowance.
-- At most four generation requests and three tool calls per turn, 12,000 input tokens per generation request, 2,048 output tokens per request, and a two-minute turn deadline. Trim history and retrieved context to fit. Retry and regeneration attempts share these budgets.
+- Ten accepted conversation turns per minute and 100 per day per user; 1,000 generation requests per day across the deployment, shared by NVIDIA and OpenAI and counting retries. Replayed webhook events do not consume another turn allowance.
+- At most four generation requests and three builder tool calls per turn, 12,000 input tokens per generation request, 2,048 output tokens per request, and a two-minute turn deadline. For OpenAI, use `max_output_tokens=2048`, which includes reasoning tokens; an incomplete response follows the failure path instead of sending an unfinished answer. Trim history and retrieved context to fit. Retry and regeneration attempts share these budgets, including calls made inside the builder loop.
 - At most ten pending conversation jobs per user and 100 pending jobs overall. Serialize conversation work per user; permit two concurrent generation requests globally and one indexing job. Indexing uses bounded embedding batches, at most 100,000 embedding input tokens per deployment per day, and at most five indexing attempts per file per hour, including automatic and manual retries.
 - Retain at most 200 messages per conversation for at most 30 days. Retain only current file contents and current embeddings; purge superseded embedding rows and failed staging data. Bound staging to one current indexing version per file and the same project chunk limit.
 - Retain completed job payloads and outbound bodies for seven days. Keep compact event, mutation, and outbound deduplication records for at least 30 days and no less than the verified provider redelivery window; reject expired jobs instead of replaying them. A project-deletion tombstone survives for that window so delayed work cannot recreate it. Expired tokens and confirmations are cleaned up routinely.
@@ -134,8 +143,8 @@ File updates include the expected version; stale writes return a conflict rather
 
 ## Reliability and implementation sequence
 
-1. **Establish integration contracts:** inspect the provisioned Photon configuration and existing SpacetimeDB schema; pin dependencies and provider API versions. Record Photon event IDs, signature/replay verification, inbound sender and destination fields, outbound idempotency scope/expiry, delivery lookup, and attachment access. Configure runtime credentials through environment variables. Prepare provider smoke tests; run them only when explicitly requested. The integration gate requires an inbound event and outbound reply on the existing setup, NVIDIA generation/embedding access, and an authenticated Python database read/write round trip.
-2. **Deliver the first complete journey:** text the number, create a project with Nemotron, receive a vault link, upload Markdown in the dashboard, share the code, and have a second user receive a cited answer. Implement ownership, expiry, quotas, scoped histories, versioning, and durable jobs as part of this path. Use one Python container with a durable-job worker and the existing managed database. Verify the second user's actual Photon number mapping before declaring this journey complete.
+1. **Establish integration contracts:** inspect the provisioned Photon configuration and existing SpacetimeDB schema; pin dependencies and provider API versions. Record Photon event IDs, signature/replay verification, inbound sender and destination fields, outbound idempotency scope/expiry, delivery lookup, and attachment access. Configure separate `NVIDIA_API_KEY` and `OPENAI_API_KEY` credentials through environment variables. Prepare provider smoke tests; run them only when explicitly requested. The integration gate requires an inbound event and outbound reply on the existing setup, a Nemotron builder tool call through NVIDIA's hosted API, an OpenAI `gpt-5.6-luna` response with low reasoning effort, OpenAI document/query embeddings, and an authenticated Python database read/write round trip.
+2. **Deliver the first complete journey:** text the number, create a project with the Nemotron builder, receive a vault link, upload Markdown in the dashboard, share the code, and have a second user receive a cited GPT-5.6 Luna answer at low reasoning effort. Implement ownership, expiry, quotas, scoped histories, versioning, and durable jobs as part of this path. Use one Python container containing FastAPI and the durable-job worker, plus the existing managed database. Verify the second user's actual Photon number mapping before declaring this journey complete.
 3. **Verify the first journey:** mocked integration tests cover the failure cases below that apply to the implemented first-journey capabilities. At an explicitly requested live verification step, exercise the journey with two users, check retrieval latency and representative grounded/unsupported questions, and verify crash recovery. Mocked success alone does not complete the live integration gate.
 4. **Extend after the first journey passes:** add project rename/deletion confirmation, conversational file editing, Photon attachment imports, manual indexing retries, and broader natural-language navigation. Add each extension's applicable tests as it lands. Keep each extension small and independently reviewable.
 5. **Finish deployment documentation:** record HTTPS webhook configuration, environment variables, configured limits, database/module deployment, and worker recovery procedures. Record actual verification results and any unverified provider behavior.
@@ -165,6 +174,8 @@ Cover:
 - First-message registration and duplicate webhook delivery.
 - Exact commands and natural-language equivalents, ambiguity, and ownership rejection.
 - Independent builder focus and customer selection.
+- Provider routing: builder calls use NVIDIA's hosted Nemotron API; project answers use OpenAI `gpt-5.6-luna` with low reasoning effort, and document/query embeddings use OpenAI. Project Q&A remains usable during an NVIDIA outage. Verify unavailable-model errors, incomplete/empty responses, and per-provider retries within shared budgets.
+- Builder-loop bounds and per-user context isolation, including recovery without duplicate tool mutations and rejection of unknown tools or invalid arguments.
 - Cross-user/project isolation, including malicious Markdown instructions.
 - Immediately live empty projects and editable agent instructions.
 - Markdown validation, quota enforcement, duplicate names, and conflicting saves.
@@ -180,6 +191,6 @@ Cover:
 - Per-user/global quotas, bounded tool loops, indexing retry limits, and retention cleanup without removing active deduplication protection.
 - Authenticated database reads and reducer calls, with anonymous/unrelated identities denied at the database boundary.
 
-The user has already provisioned the Photon project and line and reports capacity for 25 numbers, with one currently used for their personal assignment. New line provisioning is not a prerequisite in this plan. Exact assignment/routing behavior and second-user access remain integration checks, not assumptions that the existing assignment is a shared public destination. SpacetimeDB CLI access and the existing Maincloud database are confirmed; NVIDIA model access and deployed runtime credentials still require verification.
+The user has already provisioned the Photon project and line and reports capacity for 25 numbers, with one currently used for their personal assignment. New line provisioning is not a prerequisite in this plan. Exact assignment/routing behavior and second-user access remain integration checks, not assumptions that the existing assignment is a shared public destination. SpacetimeDB CLI access and the existing Maincloud database are confirmed; hosted Nemotron access, OpenAI GPT-5.6 Luna/embedding access, and deployed runtime credentials still require verification.
 
-V1 excludes history reset, NeMo Agent Toolkit, URL ingestion, non-Markdown resources, group chats, public agent discovery, collaborative project ownership, separate numbers per agent, and OpenAI/Hermes integration. Live provider smoke tests and application startup require an explicit request and are planned early enough to validate integrations before broadening the implementation.
+V1 excludes history reset, NeMo Fabric, NeMo Agent Toolkit, model training/self-hosting, URL ingestion, non-Markdown resources, group chats, public agent discovery, collaborative project ownership, separate numbers per agent, and Hermes integration. Live provider smoke tests and application startup require an explicit request and are planned early enough to validate integrations before broadening the implementation.
