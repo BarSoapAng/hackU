@@ -2,6 +2,7 @@
 
 import asyncio
 import ipaddress
+import json
 import os
 import re
 import time
@@ -17,6 +18,31 @@ from app.database import DatabaseUnavailable, SpacetimeStore
 def safe_text(value):
     """Capability links may appear in legacy transcripts; never make them usable."""
     return re.sub(r'https?://[^\s<>]*?/vault(?:[?#][^\s<>]*)?', '[vault link omitted]', str(value), flags=re.I)
+
+
+def safe_number(value, *, integer=False):
+    if type(value) in (int, float) and 0 <= value <= 2**53 - 1 and (not integer or type(value) is int):
+        return value
+    return None
+
+
+def tool_payload(name, value, *, result=False):
+    """Project known tool fields, never arbitrary nested trace/capability objects."""
+    if not isinstance(value, dict):
+        return None
+    if result and isinstance(value.get('error'), str):
+        return {'error': safe_text(value['error'])}
+    if result and name == 'issue_vault_link':
+        return {'vault_link_ready': bool(value.get('capability') or value.get('vault_link_ready'))}
+    if result and name == 'update_instructions':
+        return {'updated': value['updated']} if isinstance(value.get('updated'), bool) else {}
+    if result and name == 'list_projects':
+        return {'projects': [tool_payload('select_project', project, result=True)
+                             for project in value.get('projects', []) if isinstance(project, dict)]}
+    keys = ('id', 'name', 'code') if result and name in ('create_project', 'select_project') else {
+        'create_project': ('name',), 'select_project': ('code',), 'update_instructions': ('instructions',),
+    }.get(name, ())
+    return {key: safe_text(value[key]) for key in keys if isinstance(value.get(key), str)}
 
 
 class DashboardData:
@@ -36,11 +62,39 @@ class DashboardData:
                 participant, project, kind = key[:-8], None, 'builder'
             else:
                 continue
-            messages = [message for message in history if message.get('created', 0) > now - 30 * 86400
+            messages = [dict(message) for message in history if message.get('created', 0) > now - 30 * 86400
                         and message.get('role') in ('user', 'assistant')][-200:]
+            for index, message in enumerate(messages[:-1]):
+                following = messages[index + 1]
+                if (message['role'] == 'user' and following['role'] == 'assistant'
+                        and message['created'] == following['created']):
+                    message['job_id'] = following.get('outbox')
             if messages:
                 self.conversations[key] = {'id': key, 'kind': kind, 'participant_id': participant,
                                            'project_id': project, 'messages': messages}
+        for job in sorted(state.get('jobs', {}).values(), key=lambda item: (item.get('sequence', 0), item.get('created', 0))):
+            key = self.job_conversation(job)
+            if (not key or job.get('status') not in ('queued', 'running') or 'question' not in job
+                    or job.get('created', 0) <= now - 30 * 86400):
+                continue
+            item = self.conversations.setdefault(key, {'id': key,
+                'kind': 'builder' if job['mode'] == 'builder' else 'project',
+                'participant_id': job['user'], 'project_id': None if job['mode'] == 'builder' else job['selected'],
+                'messages': []})
+            if not any(message.get('outbox', message.get('job_id')) == job['id'] for message in item['messages']):
+                item['messages'].append({'role': 'user', 'content': job['question'],
+                                         'created': job['created'], 'job_id': job['id']})
+        for item in self.conversations.values():
+            item['messages'] = item['messages'][-200:]
+
+    def job_conversation(self, job):
+        if job.get('kind') != 'turn' or job.get('user') not in self.users:
+            return None
+        if job.get('mode') == 'builder':
+            return f'{job["user"]}:builder'
+        if job.get('mode') == 'customer' and job.get('selected') in self.projects:
+            return f'{job["user"]}:project:{job["selected"]}'
+        return None
 
     def account(self, account_id):
         if account_id not in self.users:
@@ -95,7 +149,7 @@ class DashboardData:
                 'last_active': max(own_activity, default=None)}
 
     def message(self, message):
-        job_id = message.get('outbox')
+        job_id = message.get('job_id') or message.get('outbox')
         box = self.state.get('outbox', {}).get(job_id, {})
         delivery = None
         if message['role'] == 'assistant':
@@ -103,6 +157,68 @@ class DashboardData:
                                   or box.get('status') == 'sent') else box.get('status', 'unknown')
         return {'role': message['role'], 'content': safe_text(message.get('content', '')),
                 'created': message['created'], 'job_id': job_id, 'delivery_status': delivery}
+
+    def tools(self, job, trace_available):
+        steps = {step['id']: dict(step) for step in job.get('steps', [])}
+        order = []
+        if trace_available:
+            calls = {}
+            for position, entry in enumerate(job.get('trace', []), start=1):
+                if entry.get('role') == 'assistant':
+                    for index, call in enumerate(entry.get('tool_calls', [])):
+                        key = f'{position}:{index}'
+                        step = next((step for step in steps.values() if step.get('call_key') == key), None)
+                        if step is None:
+                            function = call.get('function', {})
+                            try:
+                                arguments = json.loads(function.get('arguments', '{}'))
+                            except (ValueError, TypeError):
+                                arguments = None
+                            step = {'id': f'{job["id"]}:call:{key}', 'name': function.get('name', 'Unknown tool'),
+                                    'created': None, 'arguments': arguments}
+                            steps[step['id']] = step
+                        order.append(step['id'])
+                        calls[call.get('id')] = step
+                elif entry.get('role') == 'tool' and entry.get('tool_call_id') in calls:
+                    try:
+                        calls.pop(entry['tool_call_id'])['result'] = json.loads(entry.get('content', '{}'))
+                    except (ValueError, TypeError):
+                        pass
+        items = []
+        for step_id in dict.fromkeys([*order, *steps]):
+            step = steps[step_id]
+            result = step.get('result')
+            status = ('failed' if isinstance(result, dict) and 'error' in result else 'completed') if 'result' in step else (
+                'pending' if job.get('status') in ('queued', 'running') and job.get('deadline', 0) > self.now else 'unknown')
+            items.append({'id': step['id'], 'name': step['name'], 'created': step.get('created'), 'status': status,
+                          'arguments': tool_payload(step['name'], step.get('arguments')) if trace_available else None,
+                          'result': tool_payload(step['name'], result, result=True) if trace_available else None})
+        return items
+
+    def request(self, request, job):
+        result = {key: request.get(key) if isinstance(request.get(key), str) else None for key in (
+            'id', 'provider', 'operation', 'model', 'error_type')}
+        result.update({key: safe_number(request.get(key)) for key in ('started', 'finished', 'duration_ms')})
+        result.update({key: safe_number(request.get(key), integer=True) for key in (
+            'sequence', 'input_tokens', 'output_tokens', 'cached_input_tokens', 'total_tokens')})
+        result['provider_status'] = request.get('provider_status') if request.get('provider_status') in (
+            'completed', 'incomplete', 'failed', 'cancelled', 'queued', 'in_progress') else None
+        status = request.get('http_status')
+        result['http_status'] = status if type(status) is int and 100 <= status <= 599 else None
+        result['status'] = request.get('status') if request.get('status') in ('pending', 'received', 'failed', 'unknown') else 'unknown'
+        if result['status'] == 'pending' and (job.get('status') not in ('queued', 'running') or job.get('deadline', 0) <= self.now):
+            result['status'] = 'unknown'
+        return result
+
+    def turn(self, job):
+        trace_available = job['created'] > self.now - 7 * 86400 and ('steps' in job or 'trace' in job)
+        requests = [self.request(request, job) for request in job.get('requests', [])
+                    if isinstance(request, dict) and (safe_number(request.get('started')) is None
+                        or request['started'] > self.now - 30 * 86400)]
+        return {'id': job['id'], 'created': job['created'], 'status': job['status'],
+                'attempts': job.get('attempts', 0), 'generations': job.get('generations', 0),
+                'trace_available': trace_available, 'tools': self.tools(job, trace_available),
+                'requests': requests, 'usage_recorded': bool(requests)}
 
 
 def create_dashboard_app(store, *, clock=time.time, cache_seconds=2):
@@ -207,6 +323,18 @@ def create_dashboard_app(store, *, clock=time.time, cache_seconds=2):
         return {key: item[key] for key in ('id', 'kind', 'project_id', 'participant_id')} | {
             'messages': [current.message(message) for message in messages], 'total': len(item['messages']),
             'offset': offset, 'limit': limit, 'coverage': {'message_days': 30, 'message_limit': 200, 'trace_days': 7}}
+
+    @app.get('/api/internal/accounts/{account_id}/conversations/{conversation_id}/activity')
+    async def activity(account_id: str, conversation_id: str, offset: int = Query(0, ge=0),
+                       limit: int = Query(25, ge=1, le=100), turn_id: str | None = Query(None, max_length=256)):
+        current = await data()
+        current.conversation(account_id, conversation_id)
+        jobs = [job for job in current.state.get('jobs', {}).values()
+                if current.job_conversation(job) == conversation_id and job.get('created', 0) > current.now - 30 * 86400
+                and (turn_id is None or job['id'] == turn_id)]
+        jobs.sort(key=lambda job: (job['created'], job['id']), reverse=True)
+        return {'items': [current.turn(job) for job in jobs[offset:offset + limit]],
+                'total': len(jobs), 'offset': offset, 'limit': limit, 'coverage': {'trace_days': 7, 'usage_days': 30}}
 
     return app
 

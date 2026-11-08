@@ -6,6 +6,7 @@ import re
 from functools import lru_cache
 
 from app.models import ProviderError, provider_error
+from app.telemetry import tracked_call
 
 
 @lru_cache(maxsize=1)
@@ -136,7 +137,8 @@ class HaystackEmbeddings:
             raise ValueError("Embedding batches require 1-32 nonempty chunks of at most 8,000 tokens.")
         documents = [Document(id=str(i), content=c["text"]) for i, c in enumerate(chunks)]
         try:
-            result = await self.documents.run_async(documents=documents)
+            result = await tracked_call(self.documents.run_async, 'openai', 'document_embedding', self.model,
+                                        documents=documents)
         except Exception as exc:
             raise provider_error(exc) from None
         enriched = result.get("documents", [])
@@ -149,7 +151,7 @@ class HaystackEmbeddings:
         if not text.strip() or token_count(text) > 8000:
             raise ValueError("Embedding queries require 1-8,000 tokens.")
         try:
-            result = await self.queries.run_async(text=text)
+            result = await tracked_call(self.queries.run_async, 'openai', 'query_embedding', self.model, text=text)
         except Exception as exc:
             raise provider_error(exc) from None
         vector = result.get("embedding")

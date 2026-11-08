@@ -20,35 +20,55 @@ export type Conversation = {
   messages: Message[]; total: number; offset: number; limit: number;
   coverage: { message_days: number; message_limit: number; trace_days: number }
 }
+export type ModelRequest = {
+  id: string; sequence: number | null; provider: 'nvidia' | 'openai' | null; operation: 'builder' | 'answer' | 'query_embedding' | 'document_embedding' | null;
+  model: string | null; started: number | null; finished: number | null; duration_ms: number | null;
+  status: 'pending' | 'received' | 'failed' | 'unknown'; input_tokens: number | null; output_tokens: number | null;
+  cached_input_tokens: number | null; total_tokens: number | null; provider_status: string | null; error_type: string | null; http_status: number | null
+}
+export type ActivityTurn = {
+  id: string; created: number; status: string; attempts: number; generations: number; trace_available: boolean;
+  tools: { id: string; name: string; created: number | null; arguments: Record<string, unknown> | null; result: Record<string, unknown> | null; status: string }[];
+  requests: ModelRequest[]; usage_recorded: boolean
+}
+export type Activity = Page<ActivityTurn> & { coverage: { trace_days: number; usage_days: number } }
 
 export function accountPath(id: string) {
   return `/api/internal/accounts/${encodeURIComponent(id)}`
 }
 
-class DashboardError extends Error {}
+class DashboardError extends Error {
+  constructor(message: string, readonly status: number) { super(message) }
+}
 
 export function useApi<T>(path: string | null, refresh = 0) {
-  const [result, setResult] = useState<{ path: string | null; refresh: number; data?: T; error?: string }>({ path: null, refresh: 0 })
+  const [result, setResult] = useState<{ path: string | null; refresh: number; data?: T; error?: string; pending?: boolean }>({ path: null, refresh: 0 })
   const [retry, setRetry] = useState(0)
   useEffect(() => {
     if (!path) return
     const controller = new AbortController()
-    setResult({ path, refresh })
+    setResult(previous => ({ path, refresh, data: previous.path === path ? previous.data : undefined, pending: true }))
     fetch(path, { signal: controller.signal, cache: 'no-store' })
       .then(async response => {
         if (!response.ok) throw new DashboardError(response.status === 404
           ? 'This record is no longer available. Refresh or choose another user.'
-          : 'The dashboard could not load this data. Check the local API and try again.')
+          : 'The dashboard could not load this data. Check the local API and try again.', response.status)
         return response.json() as Promise<T>
       })
       .then(data => { if (!controller.signal.aborted) setResult({ path, refresh, data }) })
       .catch(error => {
-        if (!controller.signal.aborted) setResult({ path, refresh, error: error instanceof DashboardError ? error.message : 'The dashboard could not load this data. Check the local API and try again.' })
+        if (!controller.signal.aborted) setResult(previous => ({
+          path, refresh,
+          data: previous.path === path && !(error instanceof DashboardError && error.status === 404) ? previous.data : undefined,
+          error: error instanceof DashboardError ? error.message : 'The dashboard could not load this data. Check the local API and try again.',
+        }))
       })
     return () => controller.abort()
   }, [path, refresh, retry])
-  const current = result.path === path && result.refresh === refresh ? result : undefined
-  return { data: current?.data, error: current?.error, loading: !!path && !current?.data && !current?.error, retry: useCallback(() => setRetry(value => value + 1), []) }
+  const current = result.path === path ? result : undefined
+  return { data: current?.data, error: current?.error, loading: !!path && !current?.data && !current?.error,
+    refreshing: !!current?.data && (!!current.pending || current.refresh !== refresh),
+    retry: useCallback(() => setRetry(value => value + 1), []) }
 }
 
 export function formatTime(seconds: number | null) {

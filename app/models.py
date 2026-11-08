@@ -4,6 +4,8 @@ import json
 from copy import deepcopy
 from typing import Any
 
+from app.telemetry import tracked_call
+
 
 class ProviderError(Exception):
     def __init__(self, message: str, *, retryable: bool = False, kind: str = "provider"):
@@ -78,7 +80,7 @@ class ModelGateway:
     async def builder(self, messages: list[dict], tools: list[dict]) -> dict:
         messages = _trim_builder(messages, tools)
         try:
-            response = await self.nemotron.chat.completions.create(
+            response = await tracked_call(self.nemotron.chat.completions.create, 'nvidia', 'builder', self.builder_model,
                 model=self.builder_model, messages=messages, tools=tools,
                 tool_choice="auto", parallel_tool_calls=False, max_tokens=2048,
                 temperature=0, extra_body={"chat_template_kwargs": {"enable_thinking": False}},
@@ -160,7 +162,7 @@ class ModelGateway:
             else:
                 raise ProviderError("This request is too large. Please send a shorter message.", kind="input_limit")
         try:
-            response = await self.openai.responses.create(
+            response = await tracked_call(self.openai.responses.create, 'openai', 'answer', self.project_model,
                 model=self.project_model, input=messages, reasoning={"effort": "low"},
                 max_output_tokens=2048, store=False,
             )

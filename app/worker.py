@@ -8,6 +8,7 @@ import secrets
 from app.database import DatabaseUnavailable
 from app.photon import PhotonError, SendResult
 from app.service import DomainError, available, cancel_job, cancel_outbox, check_job, consume, initialize, redact_links, source_versions_current
+from app.telemetry import recover_requests, request_context
 
 
 class Worker:
@@ -253,6 +254,7 @@ class Worker:
         await self.service.store.transaction(commit)
 
     async def run_job(self, job):
+        context = request_context.set((self.service, job['id'], job['claim']))
         heartbeat = asyncio.create_task(self.heartbeat(job))
         try:
             async with asyncio.timeout(max(.01, job['deadline'] - self.service.clock())):
@@ -269,6 +271,7 @@ class Worker:
             logging.getLogger(__name__).warning('job_failed operation=%s type=%s', job['id'], type(exc).__name__)
             await self.fail(job, exc)
         finally:
+            request_context.reset(context)
             heartbeat.cancel()
             await asyncio.gather(heartbeat, return_exceptions=True)
 
@@ -309,6 +312,7 @@ class Worker:
         """Only after stopping the previous process. An interrupted submit may have sent."""
         def recover(state):
             initialize(state)
+            recover_requests(state)
             for outbox in state['outbox'].values():
                 if outbox['status'] == 'submitting':
                     outbox['status'] = 'unknown'

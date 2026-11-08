@@ -46,3 +46,23 @@ test('retry clears a failed result and retrieves new data', async () => {
   await waitFor(() => expect(view.result.current.data?.users).toBe(2))
   expect(view.result.current.error).toBeUndefined()
 })
+
+test('background refresh keeps same-scope data through an outage but clears deleted records', async () => {
+  let finish!: (response: Response) => void
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ users: 2 })))
+    .mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve }))
+    .mockResolvedValueOnce(new Response('', { status: 404 }))
+  vi.stubGlobal('fetch', fetch)
+  const view = renderHook(({ refresh }) => useApi<{ users: number }>('/users', refresh), { initialProps: { refresh: 0 } })
+  await waitFor(() => expect(view.result.current.data?.users).toBe(2))
+  view.rerender({ refresh: 1 })
+  expect(view.result.current.data?.users).toBe(2)
+  expect(view.result.current.refreshing).toBe(true)
+  await act(async () => finish(new Response('', { status: 503 })))
+  expect(view.result.current.data?.users).toBe(2)
+  expect(view.result.current.error).toContain('Check the local API')
+  view.rerender({ refresh: 2 })
+  await waitFor(() => expect(view.result.current.data).toBeUndefined())
+  expect(view.result.current.error).toContain('no longer available')
+})
