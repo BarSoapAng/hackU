@@ -150,6 +150,39 @@ def verify_event(
         raise WebhookError("Malformed webhook event.") from None
 
 
+def plain_text(text: str) -> str:
+    """Remove presentation markup while preserving literal code, URLs and citations."""
+    text = text.replace('\x00', '')
+    literals = []
+
+    def keep(value):
+        literals.append(value)
+        return f'\x00{len(literals) - 1}\x00'
+
+    text = re.sub(r'(?ms)^[ \t]*(`{3,}|~{3,})[^\n]*\n(.*?)^[ \t]*\1[ \t]*(?=\n|$)',
+                  lambda m: keep(m[2].rstrip('\n')), text)
+    text = re.sub(r'(`+)([^\n]*?)\1', lambda m: keep(m[2]), text)
+    definition = r'(?m)^[ \t]*\[([^\]\n]+)\]:[ \t]+(\S+)(?:[ \t]+[^\n]*)?$'
+    references = {label.casefold(): url.strip('<>') for label, url in re.findall(definition, text)}
+    text = re.sub(definition, '', text)
+    text = re.sub(r'!?\[([^\]\n]*)\]\(<?((?:[^\s()<>]|\([^\s()]*\))+)>?(?:\s+"[^"]*")?\)',
+                  lambda m: f'{m[1]} ({keep(m[2])})', text)
+    text = re.sub(r'!?\[([^\]\n]+)\](?:\[([^\]\n]*)\])?',
+                  lambda m: f'{m[1]} ({keep(references[(m[2] or m[1]).casefold()])})'
+                  if (m[2] or m[1]).casefold() in references else m[0], text)
+    text = re.sub(r'<(https?://[^\s<>]+)>', lambda m: keep(m[1]), text)
+    text = re.sub(r'https?://[^\s<>\x00]*[^\s<>\x00*_~.,;:!?)\]}"]', lambda m: keep(m[0]), text)
+    text = re.sub(r'(?m)^[ \t]*#{1,6}[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$', r'\1', text)
+    text = re.sub(r'(?m)^[ \t]*(?:>[ \t]*)+', '', text)
+    text = re.sub(r'(?m)^[ \t]*(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,}|={3,})$', '', text)
+    text = re.sub(r'(?m)^([ \t]*)(?:[-+*]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?', r'\1• ', text)
+    while (unmarked := re.sub(r'(?<!\w)(\*\*\*|___|\*\*|__|~~|\*|_)(?=\S)(.+?)(?<=\S)\1(?!\w)', r'\2', text)) != text:
+        text = unmarked
+    text = re.sub(r'(?m)^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*)+\|?[ \t]*$', '', text)
+    text = re.sub(r'(?m)^[ \t]*\|(.+)\|[ \t]*$', lambda m: ' — '.join(c.strip() for c in m[1].split('|')), text)
+    return re.sub(r'\x00(\d+)\x00', lambda m: literals[int(m[1])], text).strip()
+
+
 class PhotonClient:
     def __init__(self, client: httpx.AsyncClient, project_id: str, api_key: str,
                  base_url: str = "https://api.photon.codes"):
@@ -183,6 +216,7 @@ class PhotonClient:
             return SendResult("unknown")
 
     async def send(self, space_id: str, agent_id: str, text: str, idempotency_key: str) -> SendResult:
+        text = plain_text(text)
         if not idempotency_key or not text or not space_id or not agent_id:
             raise ValueError("A send requires its persisted identity, destination and body.")
         try:

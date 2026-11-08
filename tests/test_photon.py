@@ -119,6 +119,48 @@ def assignment(phone="+14155550123", destination="+16283166196", identifier="ass
 
 
 class TestTransport(IsolatedAsyncioTestCase):
+    async def test_send_converts_markdown_to_plain_text_without_losing_content(self):
+        requests = []
+        async def handler(request):
+            requests.append(request)
+            return httpx.Response(202, json={"id": "sent-1", "status": "dispatched"})
+        text = (
+            '# Help\n**Ready** for _questions_ and ***more***.\n'
+            '- Ask about `slash_commands`.\n1. Use **/help**.\n'
+            '> ~~Old~~ New hours. [hours.md > Opening]\n'
+            '[Guide](https://example.test/my_guide_(v1)#section)\n'
+            '**Visit https://example.test/help**. **https://example.test/help**\n'
+            '[Help](/help) [Email](mailto:team@example.test) [Guide][docs]\n'
+            '[docs]: https://example.test/_guide_\n'
+            '```python\nvalue = "**literal**"\n```\n'
+            '| Command | Purpose |\n| --- | --- |\n| /help | Commands |'
+        )
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            await PhotonClient(client, "project", "test-secret").send("space", "agent", text, "key")
+        content = json.loads(requests[0].content)["content"]
+        assert content == {"type": "text", "format": "plain", "text": (
+            'Help\nReady for questions and more.\n'
+            '• Ask about slash_commands.\n• Use /help.\n'
+            'Old New hours. [hours.md > Opening]\n'
+            'Guide (https://example.test/my_guide_(v1)#section)\n'
+            'Visit https://example.test/help. https://example.test/help\n'
+            'Help (/help) Email (mailto:team@example.test) Guide (https://example.test/_guide_)\n\n'
+            'value = "**literal**"\n'
+            'Command — Purpose\n\n/help — Commands'
+        )}
+
+    async def test_send_preserves_plain_text_urls_citations_and_literal_symbols(self):
+        text = ('Use /edit ABC123 or /help.\n[my_guide.md > Opening]\n'
+                'https://vault.example/vault#token_with_two_underscores\n'
+                'https://example.test/_guide_/a*b*c?q=one_two_three#part\n'
+                'https://example.test/_guide_ https://example.test/path*\n'
+                'Price: $5. 2 * 3 = 6; snake_case_name; C#; #123. Hello 🌍')
+        async def handler(request):
+            assert json.loads(request.content)["content"]["text"] == text
+            return httpx.Response(202, json={"id": "sent-1", "status": "dispatched"})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            await PhotonClient(client, "project", "test-secret").send("space", "agent", text, "key")
+
     async def test_send_exact_identity_payload_key_and_no_hidden_retries(self):
         requests = []
         async def handler(request):
