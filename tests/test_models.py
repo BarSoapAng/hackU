@@ -81,6 +81,8 @@ def test_builder_tool_contract():
     request = nemotron.chat.completions.create.call_args.kwargs
     assert request["model"] == "nemotron-builder" and request["max_tokens"] == 2048
     assert request["parallel_tool_calls"] is False
+    assert request["temperature"] == 0
+    assert request["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
     openai.responses.create.assert_not_called()
 
 

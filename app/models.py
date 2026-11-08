@@ -81,6 +81,7 @@ class ModelGateway:
             response = await self.nemotron.chat.completions.create(
                 model=self.builder_model, messages=messages, tools=tools,
                 tool_choice="auto", parallel_tool_calls=False, max_tokens=2048,
+                temperature=0, extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
         except Exception as exc:
             raise provider_error(exc) from None

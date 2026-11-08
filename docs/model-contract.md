@@ -2,7 +2,7 @@
 
 `app/models.py` makes one request per adapter invocation. The worker owns durable request reservations, global concurrency, retry limits, turn deadlines, and tool intent persistence. Both SDK clients disable automatic retries; they have independent credentials and endpoints. No provider or model fallback is implemented.
 
-- Builder: OpenAI-compatible Chat Completions at the configured Nemotron URL, `nemotron-builder`, tool schemas, sequential tool calls, and `max_tokens=2048`. The adapter rejects malformed, unknown, duplicate-ID, and excessive tool calls. The backend validates each tool's arguments and authorization before mutation.
+- Builder: OpenAI-compatible Chat Completions at the configured Nemotron URL, `nemotron-builder`, tool schemas, sequential tool calls, `max_tokens=2048`, `temperature=0`, and `chat_template_kwargs.enable_thinking=false`. The adapter rejects malformed, unknown, duplicate-ID, and excessive tool calls. The backend validates each tool's arguments and authorization before mutation, and counts every proposed tool call against the turn budget, including invalid arguments.
 - Project answers: OpenAI Responses, `gpt-5.6-luna`, `reasoning={"effort":"low"}`, `store=false`, `max_output_tokens=2048`, and no tools. Refusal, incomplete, and empty responses fail explicitly. Project Q&A does not access Nemotron.
 - Prompts distinguish current Markdown sources from instructions, require filename/heading citations and abstention, and forbid management and history reset. These are soft grounding requirements; mocked outputs do not establish factual accuracy.
 
@@ -21,4 +21,4 @@ Authoritative contracts consulted:
 - [Embedding model](https://developers.openai.com/api/docs/models/text-embedding-3-small).
 - [Haystack document embedder](https://docs.haystack.deepset.ai/docs/openaidocumentembedder) and [query embedder](https://docs.haystack.deepset.ai/docs/openaitextembedder); constructor behavior was checked against the installed pinned package.
 
-Verification so far uses mocks and a local HTTP transport only. No live inference, embeddings, model access check, app startup, or performance measurement has been performed. The deployment gate still requires a Nemotron tool call, a GPT-5.6 Luna answer with low reasoning, actual document/query embeddings, and maximum-vault retrieval timing.
+This implementation's verification uses mocks and a local HTTP transport only. Separate live Nemotron verification recorded in [the deployment README](../deploy/nemotron/README.md) established the non-thinking, temperature-zero tool-call contract now used here. This implementation run did not invoke live providers or start the app. The remaining deployment gate requires a GPT-5.6 Luna answer with low reasoning, actual document/query embeddings, and maximum-vault retrieval timing, plus the database and two-user messaging checks.
