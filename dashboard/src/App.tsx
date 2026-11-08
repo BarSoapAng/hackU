@@ -15,7 +15,6 @@ export default function App() {
         <AccountView key={selection.accountId} accountId={selection.accountId} projectId={selection.projectId} conversationId={selection.conversationId} refresh={refresh} onRefresh={() => setRefresh(value => value + 1)} onOverview={() => setSelection(null)} onProject={projectId => setSelection({ ...selection, projectId, conversationId: null })} onConversation={conversationId => setSelection({ ...selection, conversationId })} onBuilder={conversationId => setSelection({ ...selection, projectId: null, conversationId })} />
       </> : <OverviewView refresh={refresh} onRefresh={() => setRefresh(value => value + 1)} onSelect={selectAccount} />}
     </main>
-    <footer className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-2 px-5 pb-6 text-sm text-muted-foreground sm:px-8"><span>Hypha internal dashboard</span><span>Personal development · Read-only access</span></footer>
   </>
 }
 
