@@ -66,7 +66,7 @@ def test_edit_switches_modes_and_builder_is_no_longer_a_command():
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize('command', ['/projects', '/vault'])
+@pytest.mark.parametrize('command', ['/projects'])
 def test_legacy_terminology_commands_are_not_supported(command):
     async def scenario():
         env = await environment()
@@ -84,19 +84,19 @@ def test_natural_notes_request_issues_usable_private_url_and_share_stays_public(
         job, project, _ = await create_project(env)
         await env.service.complete(job['id'], job['claim'], 'Created')
         created = reply(env, await env.service.snapshot(), job['id'])
-        assert f'https://vault.example/a/{project["code"]}' in created
-        await env.service.admit(inbound(env, 'vault', 'my notes'))
+        assert f'https://hypha.example/a/{project["code"]}' in created
+        await env.service.admit(inbound(env, 'notes', 'my notes'))
         state = await env.service.snapshot()
-        body = plain_text(reply(env, state, 'vault'))
+        body = plain_text(reply(env, state, 'notes'))
         url = next(line for line in body.splitlines() if line.startswith('https://'))
-        assert url.startswith('https://vault.example/notes#')
+        assert url.startswith('https://hypha.example/notes#')
         token = url.split('#', 1)[1]
         cap = env.service.authorize(state, token)
         assert cap['project'] == project['id'] and cap['id'] not in body
         assert 'Edit your Sprout’s notes:' in body
         await env.service.admit(inbound(env, 'share', 'share my sprout'))
         shared = reply(env, await env.service.snapshot(), 'share')
-        assert f'https://vault.example/a/{project["code"]}' in shared
+        assert f'https://hypha.example/a/{project["code"]}' in shared
         assert token not in shared and '/notes#' not in shared
         env.models.builder.assert_not_called()
     asyncio.run(scenario())

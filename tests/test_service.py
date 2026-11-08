@@ -17,7 +17,7 @@ from app.worker import Worker
 async def environment(limits=None):
     clock = SimpleNamespace(now=1_800_000_000.0)
     service = Service(MemoryStore(), Keyring({'test': b'k' * 32}, 'test'),
-                      'https://vault.example', limits=limits, clock=lambda: clock.now)
+                      'https://hypha.example', limits=limits, clock=lambda: clock.now)
     await service.sync_assignments([
         {'id': 'assignment-owner', 'phone': '+12045550101', 'destination': '+16285550101', 'created': clock.now - 60},
         {'id': 'assignment-guest', 'phone': '+12045550102', 'destination': '+16285550102', 'created': clock.now - 60},
@@ -52,7 +52,7 @@ async def create_project(env, operation='create', name='Bakery', *, guest=False)
 
 
 async def issue_capability(env, job):
-    step = await env.service.record_intent(job['id'], job['claim'], 'issue_vault_link', {})
+    step = await env.service.record_intent(job['id'], job['claim'], 'issue_notes_link', {})
     result = await env.service.execute_step(job['id'], job['claim'], step['id'])
     state = await env.service.snapshot()
     cap = state['capabilities'][result['capability']]

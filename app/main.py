@@ -155,7 +155,7 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
         if not project:
             raise DomainError("That Sprout is no longer available.", 404)
         destination = ''
-        cookie = request.cookies.get('acorn_connection', '')
+        cookie = request.cookies.get('hypha_connection', '')
         if cookie and len(cookie) < 1024:
             try:
                 remembered = service.keys.decrypt(json.loads(base64.urlsafe_b64decode(cookie)), 'share-connection')
@@ -202,14 +202,14 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
             raise DomainError('We couldn’t connect your number just yet. Please try again shortly.', 503) from None
         response = JSONResponse({'destination': assignment.destination, 'message': '/use ' + project['code']})
         sealed = service.keys.encrypt({'phone': phone, 'expires': now + 30 * 86400}, 'share-connection')
-        response.set_cookie('acorn_connection', base64.urlsafe_b64encode(json.dumps(sealed).encode()).decode(),
+        response.set_cookie('hypha_connection', base64.urlsafe_b64encode(json.dumps(sealed).encode()).decode(),
                             max_age=30 * 86400, secure=True, httponly=True, samesite='lax')
         return response
 
     @app.get("/notes", response_class=HTMLResponse)
     async def notes():
         nonce = secrets.token_urlsafe(24)
-        html = Path(__file__).with_name("static").joinpath("vault.html").read_text(encoding="utf-8")
+        html = Path(__file__).with_name("static").joinpath("notes.html").read_text(encoding="utf-8")
         return HTMLResponse(html.replace("__NONCE__", nonce), headers={"Content-Security-Policy":
             f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
             "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"})

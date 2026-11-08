@@ -47,7 +47,7 @@ class TestApi(IsolatedAsyncioTestCase):
         return await self.client.post("/api/notes", headers=self.auth if auth is None else auth,
                                       json={"name": name, "content": content})
 
-    async def test_vault_lifecycle_atomic_index_job_and_conflicting_saves(self):
+    async def test_notes_lifecycle_atomic_index_job_and_conflicting_saves(self):
         response = await self.create()
         assert response.status_code == 201
         file = response.json()
@@ -133,8 +133,6 @@ class TestApi(IsolatedAsyncioTestCase):
         assert ".innerHTML" not in response.text
 
     async def test_retired_routes_are_absent(self):
-        assert (await self.client.get('/vault')).status_code == 404
-        assert (await self.client.get('/api/vault/files', headers=self.auth)).status_code == 404
         assert (await self.client.post('/api/agents/FIRST/connect', json={'phone': '+14155550999'})).status_code == 404
 
     def delivery(self, *, event_id="event-1", text="Help me create an agent", kind="human", received="2026-01-01T00:00:00Z"):
@@ -249,7 +247,7 @@ class TestApi(IsolatedAsyncioTestCase):
             assert calls == ["list", "recover", "run"]
         assert worker.stopping.is_set() and app.state.worker_task.cancelled()
 
-    async def test_share_page_is_public_without_exposing_private_vault_data(self):
+    async def test_share_page_is_public_without_exposing_private_notes_data(self):
         response = await self.client.get('/a/FIRST')
         assert response.status_code == 200
         assert 'Meet First' in response.text and 'Your iMessage number' in response.text
@@ -273,6 +271,7 @@ class TestApi(IsolatedAsyncioTestCase):
         assert state['assignments']['+14155550123']['destination'] == '+16283166196'
         assert '+14155550999' not in state['users']
         cookie = response.headers['set-cookie']
+        assert cookie.startswith('hypha_connection=')
         assert 'HttpOnly' in cookie and 'Secure' in cookie and '+14155550999' not in cookie
         page = (await self.client.get('/a/SECOND')).text
         assert 'data-destination="+16283166222"' in page and 'data-code="SECOND"' in page

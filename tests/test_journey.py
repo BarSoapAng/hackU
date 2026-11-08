@@ -55,9 +55,9 @@ def tool(name, arguments, call_id):
 
 async def create_project(service, worker, nemotron):
     nemotron.chat.completions.create.side_effect = [tool("create_project", {"name": "Bakery"}, "create"),
-        tool("issue_vault_link", {}, "vault"),
+        tool("issue_notes_link", {}, "notes"),
         {"choices": [{"finish_reason": "stop", "message": {"content": "Your Bakery project is ready."}}]}]
-    await service.admit(event("owner-create", "Create Bakery and give me its vault link"))
+    await service.admit(event("owner-create", "Create Bakery and give me its notes link"))
     await worker.run_job(await worker.claim("turn"))
     state = await service.snapshot()
     assert state["jobs"]["owner-create"]["status"] == "completed"
@@ -268,7 +268,7 @@ def test_retry_preserves_completed_tool_steps_and_pending_capability():
         job = await worker.claim("turn")
         create = await service.record_intent(job["id"], job["claim"], "create_project", {"name": "Bakery"})
         await service.execute_step(job["id"], job["claim"], create["id"])
-        issue = await service.record_intent(job["id"], job["claim"], "issue_vault_link", {})
+        issue = await service.record_intent(job["id"], job["claim"], "issue_notes_link", {})
         await service.execute_step(job["id"], job["claim"], issue["id"])
         before = await service.snapshot()
         await worker.fail(job, ProviderError("temporary", retryable=True))

@@ -65,7 +65,7 @@ export function validateCommit(expected: bigint, actual: bigint, value: string, 
   for (const id of Object.keys(oldProjects)) {
     if (!projects[id]) throw new Error('project tombstone must be retained');
   }
-  const vaults: Record<string, { count: number; bytes: number; chunks: number; names: Set<string> }> = {};
+  const notesBySprout: Record<string, { count: number; bytes: number; chunks: number; names: Set<string> }> = {};
   for (const [id, file] of Object.entries(files)) {
     object(file);
     if (file.id !== id || !projects[file.project] || projects[file.project].deleted ||
@@ -85,13 +85,13 @@ export function validateCommit(expected: bigint, actual: bigint, value: string, 
     } else if (file.version !== 1 || Object.values(oldJobs).some(job => job.kind === 'index' && job.file === id)) {
       throw new Error('file identity cannot be recreated');
     }
-    const vault = vaults[file.project] ??= { count: 0, bytes: 0, chunks: 0, names: new Set() };
-    if (vault.names.has(file.name.toLowerCase())) throw new Error('duplicate filename');
-    vault.names.add(file.name.toLowerCase());
-    vault.count++;
-    vault.bytes += file.bytes;
-    vault.chunks += file.chunk_count;
-    if (vault.count > 20 || vault.bytes > 1048576 || vault.chunks > 1000) throw new Error('vault quota exceeded');
+    const notes = notesBySprout[file.project] ??= { count: 0, bytes: 0, chunks: 0, names: new Set() };
+    if (notes.names.has(file.name.toLowerCase())) throw new Error('duplicate note name');
+    notes.names.add(file.name.toLowerCase());
+    notes.count++;
+    notes.bytes += file.bytes;
+    notes.chunks += file.chunk_count;
+    if (notes.count > 20 || notes.bytes > 1048576 || notes.chunks > 1000) throw new Error('notes quota exceeded');
   }
   for (const [id, chunks] of Object.entries(object(next.chunks ?? {}))) {
     const file = files[id];

@@ -26,7 +26,7 @@ class TestDelivery(IsolatedAsyncioTestCase):
         state['assignments']['+14155550123'] = {'id': 'assignment-1', 'phone': '+14155550123',
                                                'destination': '+16283166196', 'created': self.now[0] - 10}
         self.service = Service(MemoryStore(state), Keyring({'test': b'x' * 32}, 'test'),
-                               'https://vault.example.test', clock=lambda: self.now[0])
+                               'https://hypha.example.test', clock=lambda: self.now[0])
         self.clients = []
 
     async def asyncTearDown(self):
@@ -39,14 +39,14 @@ class TestDelivery(IsolatedAsyncioTestCase):
         return Worker(self.service, None, None, PhotonClient(http, 'project', 'synthetic-secret'))
 
     async def issue(self):
-        receipt = await self.service.admit(Inbound('vault-turn', '+14155550123', '+16283166196', '/notes',
+        receipt = await self.service.admit(Inbound('notes-turn', '+14155550123', '+16283166196', '/notes',
                                                    self.now[0], 'space-1', 'agent-1', 'message-1'))
         assert receipt['status'] == 'accepted'
         state = await self.service.snapshot()
         return next(iter(state['capabilities']))
 
     def assistant_history(self, state):
-        return [item for item in self.service.history(state, state['jobs']['vault-turn']) if item['role'] == 'assistant']
+        return [item for item in self.service.history(state, state['jobs']['notes-turn']) if item['role'] == 'assistant']
 
     async def test_definitive_send_4xx_fails_and_revokes_capability(self):
         for status in [400, 401, 403, 422, 429]:
@@ -58,11 +58,11 @@ class TestDelivery(IsolatedAsyncioTestCase):
                     return httpx.Response(status, json={'detail': 'Sensitive provider body must not be persisted.'})
                 worker = self.worker(handler)
                 capability = await self.issue()
-                await worker.dispatch('vault-turn')
-                await worker.dispatch('vault-turn')
+                await worker.dispatch('notes-turn')
+                await worker.dispatch('notes-turn')
                 state = await self.service.snapshot()
-                assert state['outbox']['vault-turn']['status'] == 'failed'
-                assert 'payload' not in state['outbox']['vault-turn']
+                assert state['outbox']['notes-turn']['status'] == 'failed'
+                assert 'payload' not in state['outbox']['notes-turn']
                 assert state['capabilities'][capability]['revoked']
                 assert not state['delivery_material'] and not self.assistant_history(state)
                 assert methods == ['POST']
@@ -79,24 +79,24 @@ class TestDelivery(IsolatedAsyncioTestCase):
                         json={'id': 'sent-1', 'status': provider_status if request.method == 'POST' else 'delivered'})
                 worker = self.worker(handler)
                 capability = await self.issue()
-                await worker.dispatch('vault-turn')
+                await worker.dispatch('notes-turn')
                 state = await self.service.snapshot()
-                assert state['outbox']['vault-turn']['status'] == 'unknown'
-                assert state['outbox']['vault-turn']['message_id'] == 'sent-1'
-                assert 'payload' in state['outbox']['vault-turn']
+                assert state['outbox']['notes-turn']['status'] == 'unknown'
+                assert state['outbox']['notes-turn']['message_id'] == 'sent-1'
+                assert 'payload' in state['outbox']['notes-turn']
                 assert not self.assistant_history(state)
-                await worker.dispatch('vault-turn')
-                await worker.reconcile('vault-turn')
+                await worker.dispatch('notes-turn')
+                await worker.reconcile('notes-turn')
                 state = await self.service.snapshot()
-                assert state['outbox']['vault-turn']['status'] == 'sent'
-                assert 'payload' not in state['outbox']['vault-turn']
+                assert state['outbox']['notes-turn']['status'] == 'sent'
+                assert 'payload' not in state['outbox']['notes-turn']
                 assert state['capabilities'][capability]['delivered']
                 assert not state['capabilities'][capability]['revoked']
                 history = self.assistant_history(state)
                 assert history and '[notes editing link issued]' in history[0]['content']
                 assert '/notes#' not in history[0]['content']
                 assert [request.method for request in requests] == ['POST', 'GET']
-                assert requests[0].headers['Idempotency-Key'] == 'vault-turn'
+                assert requests[0].headers['Idempotency-Key'] == 'notes-turn'
                 await self.asyncTearDown()
 
     async def test_delivered_submission_immediately_removes_all_ciphertext(self):
@@ -104,10 +104,10 @@ class TestDelivery(IsolatedAsyncioTestCase):
             return httpx.Response(202, json={'id': 'sent-1', 'status': 'delivered'})
         worker = self.worker(handler)
         capability = await self.issue()
-        await worker.dispatch('vault-turn')
+        await worker.dispatch('notes-turn')
         state = await self.service.snapshot()
-        assert state['outbox']['vault-turn']['status'] == 'sent'
-        assert 'payload' not in state['outbox']['vault-turn'] and not state['delivery_material']
+        assert state['outbox']['notes-turn']['status'] == 'sent'
+        assert 'payload' not in state['outbox']['notes-turn'] and not state['delivery_material']
         assert state['capabilities'][capability]['delivered']
 
     async def test_timeout_stays_unknown_across_recovery_and_is_not_retried(self):
@@ -117,30 +117,30 @@ class TestDelivery(IsolatedAsyncioTestCase):
             raise httpx.ReadTimeout('Provider may have accepted the request.')
         worker = self.worker(handler)
         capability = await self.issue()
-        await worker.dispatch('vault-turn')
+        await worker.dispatch('notes-turn')
         await worker.recover()
-        await worker.dispatch('vault-turn')
-        await worker.reconcile('vault-turn')
+        await worker.dispatch('notes-turn')
+        await worker.reconcile('notes-turn')
         state = await self.service.snapshot()
-        assert state['outbox']['vault-turn']['status'] == 'unknown'
-        assert state['outbox']['vault-turn']['message_id'] is None
+        assert state['outbox']['notes-turn']['status'] == 'unknown'
+        assert state['outbox']['notes-turn']['message_id'] is None
         assert not self.assistant_history(state) and methods == ['POST']
         self.now[0] += 3601
         await worker.cleanup()
         state = await self.service.snapshot()
         assert capability not in state['capabilities']
-        assert 'payload' not in state['outbox']['vault-turn'] and not state['delivery_material']
+        assert 'payload' not in state['outbox']['notes-turn'] and not state['delivery_material']
 
     async def test_interrupted_submission_is_unknown_without_automatic_send(self):
         async def handler(request):
             raise AssertionError('A recovered submitting record must never send again.')
         worker = self.worker(handler)
         await self.issue()
-        await self.service.store.transaction(lambda state: state['outbox']['vault-turn'].update(status='submitting'))
+        await self.service.store.transaction(lambda state: state['outbox']['notes-turn'].update(status='submitting'))
         await worker.recover()
-        await worker.dispatch('vault-turn')
+        await worker.dispatch('notes-turn')
         state = await self.service.snapshot()
-        assert state['outbox']['vault-turn']['status'] == 'unknown'
+        assert state['outbox']['notes-turn']['status'] == 'unknown'
 
     async def test_navigation_after_ambiguous_acceptance_only_reconciles_read_only(self):
         methods = []
@@ -150,14 +150,14 @@ class TestDelivery(IsolatedAsyncioTestCase):
                                   json={'id': 'sent-1', 'status': 'accepted'})
         worker = self.worker(handler)
         capability = await self.issue()
-        await worker.dispatch('vault-turn')
+        await worker.dispatch('notes-turn')
         await self.service.admit(Inbound('switch', '+14155550123', '+16283166196', '/use DEMO',
                                          self.now[0], 'space-1', 'agent-1', 'message-2'))
-        await worker.dispatch('vault-turn')
-        await worker.reconcile('vault-turn')
+        await worker.dispatch('notes-turn')
+        await worker.reconcile('notes-turn')
         state = await self.service.snapshot()
         assert state['capabilities'][capability]['revoked']
-        assert 'payload' not in state['outbox']['vault-turn']
+        assert 'payload' not in state['outbox']['notes-turn']
         assert methods == ['POST', 'GET']
 
     async def test_reconciliation_of_failed_delivery_revokes_capability(self):
@@ -166,12 +166,12 @@ class TestDelivery(IsolatedAsyncioTestCase):
                 json={'id': 'sent-1', 'status': 'dispatched' if request.method == 'POST' else 'failed'})
         worker = self.worker(handler)
         capability = await self.issue()
-        await worker.dispatch('vault-turn')
-        await worker.reconcile('vault-turn')
+        await worker.dispatch('notes-turn')
+        await worker.reconcile('notes-turn')
         state = await self.service.snapshot()
-        assert state['outbox']['vault-turn']['status'] == 'failed'
+        assert state['outbox']['notes-turn']['status'] == 'failed'
         assert state['capabilities'][capability]['revoked']
-        assert 'payload' not in state['outbox']['vault-turn']
+        assert 'payload' not in state['outbox']['notes-turn']
 
     async def test_released_or_changed_assignment_cancels_pending_submission(self):
         async def handler(request):
@@ -180,9 +180,9 @@ class TestDelivery(IsolatedAsyncioTestCase):
         capability = await self.issue()
         await self.service.sync_assignments([{'id': 'new-assignment', 'phone': '+14155550123',
                                                'destination': '+16283166196', 'created': self.now[0] + 1}])
-        await worker.dispatch('vault-turn')
+        await worker.dispatch('notes-turn')
         state = await self.service.snapshot()
-        assert state['outbox']['vault-turn']['status'] == 'cancelled'
+        assert state['outbox']['notes-turn']['status'] == 'cancelled'
         assert state['capabilities'][capability]['revoked']
 
     async def test_same_destination_with_different_assignment_id_cannot_send_old_turn(self):
@@ -192,8 +192,8 @@ class TestDelivery(IsolatedAsyncioTestCase):
         await self.issue()
         await self.service.sync_assignments([{'id': 'different-assignment', 'phone': '+14155550123',
                                                'destination': '+16283166196', 'created': self.now[0] - 5}])
-        await worker.dispatch('vault-turn')
-        assert (await self.service.snapshot())['outbox']['vault-turn']['status'] == 'cancelled'
+        await worker.dispatch('notes-turn')
+        assert (await self.service.snapshot())['outbox']['notes-turn']['status'] == 'cancelled'
 
     async def test_refresh_adds_preassigned_participant_and_failure_preserves_mapping(self):
         async def handler(request):

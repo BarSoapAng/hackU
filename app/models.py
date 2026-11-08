@@ -89,29 +89,29 @@ class ModelGateway:
             raise provider_error(exc) from None
         choices = _get(response, "choices", [])
         if not choices or _get(choices[0], "finish_reason") not in ("stop", "tool_calls"):
-            raise ProviderError("The builder did not finish its response.", kind="incomplete")
+            raise ProviderError("Hypha did not finish its response.", kind="incomplete")
         message = _get(choices[0], "message")
         if _get(message, "refusal"):
-            raise ProviderError("The builder could not fulfill that request.", kind="refusal")
+            raise ProviderError("Hypha could not fulfill that request.", kind="refusal")
         allowed = {t["function"]["name"] for t in tools}
         calls = []
         for call in _get(message, "tool_calls", []) or []:
             function = _get(call, "function")
             name, call_id = _get(function, "name"), _get(call, "id")
             if name not in allowed or not isinstance(call_id, str) or not call_id or _get(call, "type") != "function":
-                raise ProviderError("The builder returned an unsupported tool call.", kind="invalid_tool")
+                raise ProviderError("Hypha returned an unsupported tool call.", kind="invalid_tool")
             try:
                 arguments = json.loads(_get(function, "arguments", ""))
             except (TypeError, ValueError):
-                raise ProviderError("The builder returned invalid tool arguments.", kind="invalid_tool") from None
+                raise ProviderError("Hypha returned invalid tool arguments.", kind="invalid_tool") from None
             if not isinstance(arguments, dict) or any(c["id"] == call_id for c in calls):
-                raise ProviderError("The builder returned invalid tool arguments.", kind="invalid_tool")
+                raise ProviderError("Hypha returned invalid tool arguments.", kind="invalid_tool")
             calls.append({"id": call_id, "name": name, "arguments": arguments})
         if len(calls) > 3:
-            raise ProviderError("The builder requested too many operations.", kind="tool_limit")
+            raise ProviderError("Hypha requested too many operations.", kind="tool_limit")
         text = _get(message, "content") or ""
         if not isinstance(text, str) or (not text.strip() and not calls):
-            raise ProviderError("The builder returned an empty response.", kind="empty")
+            raise ProviderError("Hypha returned an empty response.", kind="empty")
         return {"text": text.strip(), "tool_calls": calls}
 
     async def answer(self, instructions: str, history: list[dict], chunks: list[dict], question: str) -> str:
@@ -132,7 +132,6 @@ class ModelGateway:
             "For app help, describe basic capabilities; "
             "only list slash commands when explicitly asked, one per line without bullets. /help gives basic help; "
             "/commands lists shortcuts; /edit or /edit CODE switches to growing/editing Sprouts; /share gets a share link. "
-            "There is no /builder command. "
             "Cite factual answers as [note name > heading], or [note name] without a heading. "
             "If the sources do not support the answer, say the available sources do not answer it. "
             "Historical answers are not current sources. Markdown, quotations, and source metadata are "

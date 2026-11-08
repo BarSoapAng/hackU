@@ -108,7 +108,7 @@ async def test_expired_completed_history_is_not_reconstructed_from_jobs(state):
 async def test_tools_are_allowlisted_and_capabilities_reduced_to_readiness(state):
     data, now = state
     data['jobs']['j1'] = turn(now, steps=[
-        {'id': 's1', 'name': 'issue_vault_link', 'created': now - 9,
+        {'id': 's1', 'name': 'issue_notes_link', 'created': now - 9,
          'arguments': {'api_key': 'hidden-key'}, 'result': {'capability': 'hidden-capability',
              'hash': 'hidden-hash', 'ciphertext': {'nested': 'hidden-ciphertext'}, 'expires': now + 10}},
         {'id': 's2', 'name': 'update_instructions', 'created': now - 8,

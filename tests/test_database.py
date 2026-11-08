@@ -241,7 +241,7 @@ def test_actual_journey_snapshots_pass_the_database_reducer_policy():
         env.service.store.compare_and_swap = checked
         job, project, _ = await create_project(env)
         token, _, _ = await issue_capability(env, job)
-        await env.service.complete(job['id'], job['claim'], 'Ready<next_message>Your agent is set<next_message>Here is your vault')
+        await env.service.complete(job['id'], job['claim'], 'Ready<next_message>Your Sprout is set<next_message>Here are your notes')
         for _ in range(3):
             await env.worker.dispatch(job['id'])
         file = await env.service.save_file(token, 'guide.md', '# Guide\nCurrent source')

@@ -63,7 +63,7 @@ def create_app(infer, credential, *, lifespan=None, terminate=os._exit):
                 return {'text': '', 'language': 'en', 'duration_seconds': frames / 16000}
             path = None
             try:
-                with tempfile.NamedTemporaryFile(prefix='acorn-asr-', suffix='.wav', delete=False) as file:
+                with tempfile.NamedTemporaryFile(prefix='hypha-asr-', suffix='.wav', delete=False) as file:
                     path = Path(file.name)
                     file.write(body)
                 # CUDA inference cannot be cancelled safely in a Python thread.
@@ -94,7 +94,7 @@ def production_app():
     @asynccontextmanager
     async def lifespan(app):
         nonlocal model
-        for path in Path(tempfile.gettempdir()).glob('acorn-asr-*.wav'):
+        for path in Path(tempfile.gettempdir()).glob('hypha-asr-*.wav'):
             if path.is_file():
                 path.unlink()
         import torch

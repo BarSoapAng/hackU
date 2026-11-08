@@ -50,7 +50,7 @@ test('project ownership, stable codes and deletion tombstones cannot be rewritte
   assert.throws(() => verify(revived, before), /deletion/);
 });
 
-test('project and vault ceilings are checked on the complete proposed snapshot', () => {
+test('Sprout and notes ceilings are checked on the complete proposed snapshot', () => {
   const state = initial();
   for (let i = 0; i < 5; i++) state.projects['p' + i] = { id: 'p' + i, owner: 'owner', code: 'CODE' + i };
   assert.throws(() => verify(state), /project quota/);
@@ -58,7 +58,7 @@ test('project and vault ceilings are checked on the complete proposed snapshot',
   for (let i = 0; i < 21; i++) {
     state.files['f' + i] = { id: 'f' + i, project: 'p', version: 1, name: i + '.md', content: 'a', bytes: 1, chunk_count: 1 };
   }
-  assert.throws(() => verify(state), /vault quota/);
+  assert.throws(() => verify(state), /notes quota/);
   state.files = { f: { id: 'f', project: 'p', version: 1, name: 'f.md', content: 'a', bytes: 1, chunk_count: 1001 } };
   assert.throws(() => verify(state), /quota/);
   state.files.f.chunk_count = 1;
@@ -102,7 +102,7 @@ test('completed tool results and continuation bindings survive retries unchanged
     (next: any) => { next.jobs.turn.steps = []; },
     (next: any) => { next.jobs.turn.steps[0].result.id = 'another'; },
     (next: any) => { next.jobs.turn.steps[0].continuation.revision = 3; },
-    (next: any) => { next.jobs.turn.steps[0].name = 'issue_vault_link'; },
+    (next: any) => { next.jobs.turn.steps[0].name = 'issue_notes_link'; },
   ]) {
     const next = structuredClone(before);
     change(next);
@@ -161,7 +161,7 @@ test('capability expiry/scope cannot be extended and revocation is irreversible'
 
 test('retained tool results prevent recreating a purged capability', () => {
   const before = initial();
-  before.jobs.turn.steps = [{ id: 'turn:0', name: 'issue_vault_link', target: 'p', expected_revision: 1,
+  before.jobs.turn.steps = [{ id: 'turn:0', name: 'issue_notes_link', target: 'p', expected_revision: 1,
     result: { capability: 'expired-cap', expires: 50 } }];
   const next = structuredClone(before);
   next.capabilities['expired-cap'] = { hash: 'new-token', expires: 3700, revoked: false };

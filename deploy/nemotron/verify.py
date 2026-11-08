@@ -84,10 +84,10 @@ def main():
 
     messages.extend([
         {"role": "assistant", "content": answer.get("content"), "tool_calls": calls},
-        {"role": "tool", "tool_call_id": call["id"], "content": json.dumps({"code": "DEMO42", "title": "Brev verification vault"})},
+        {"role": "tool", "tool_call_id": call["id"], "content": json.dumps({"code": "DEMO42", "title": "Brev verification Sprout"})},
     ])
     answer, elapsed, _ = chat(messages, tools=tools, tool_choice="none")
-    assert "Brev verification vault" in (answer.get("content") or ""), answer
+    assert "Brev verification Sprout" in (answer.get("content") or ""), answer
     print(json.dumps({"check": "tool_result_followup", "seconds": elapsed}), flush=True)
 
     def parallel_check(digit):

@@ -51,7 +51,7 @@ def test_project_rejects_unfinished_empty_or_refused_outputs(result, kind):
     assert openai.responses.create.await_count == 1
 
 
-def test_empty_vault_does_not_call_a_provider():
+def test_empty_notes_do_not_call_a_provider():
     nemotron, openai = clients()
     assert "notes aren’t ready" in asyncio.run(ModelGateway(nemotron, openai).answer("", [], [], "Anything?"))
     openai.responses.create.assert_not_called()

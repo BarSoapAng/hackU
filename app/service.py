@@ -24,7 +24,7 @@ def initialize(state):
 
 
 def redact_links(text):
-    return re.sub(r'https?://[^\s<>]*?/(?:notes|vault)#[^\s<>]+', '[editing link omitted]', text)
+    return re.sub(r'https?://[^\s<>]*#[^\s<>]+', '[editing link omitted]', text)
 
 
 def is_greeting(text):
@@ -174,7 +174,7 @@ class Service:
         async with self.gates[event.phone]:
             snapshot = await self.snapshot()
             user = snapshot['users'].get(event.phone)
-            prepared = self._prepare_step('issue_vault_link', event.event_id, f'{event.event_id}:0', user['focus'], now) if user and (chat_command(event.text.strip()) or '').lower() == '/notes' else None
+            prepared = self._prepare_step('issue_notes_link', event.event_id, f'{event.event_id}:0', user['focus'], now) if user and (chat_command(event.text.strip()) or '').lower() == '/notes' else None
             def accept(state):
                 initialize(state)
                 if event.event_id in state['receipts']:
@@ -240,7 +240,7 @@ class Service:
             current = check_job(await self.snapshot(), job['id'], job['claim'], now)
             if not deterministic_input(current['question']):
                 return False
-            prepared = self._prepare_step('issue_vault_link', job['id'], f'{job["id"]}:0', current['focus'], now) if (chat_command(current['question']) or '').lower() == '/notes' else None
+            prepared = self._prepare_step('issue_notes_link', job['id'], f'{job["id"]}:0', current['focus'], now) if (chat_command(current['question']) or '').lower() == '/notes' else None
             def complete(state):
                 current = check_job(state, job['id'], job['claim'], now)
                 answer = self._command(state, state['users'][current['user']], current, now, prepared)
@@ -291,7 +291,7 @@ class Service:
                 return '\n'.join(f'{p["name"]}: {p["code"]}' for p in projects) or 'No Sprouts in your little grove yet. Tell me what you’d like to grow!'
             if command == '/notes' and len(parts) == 1:
                 owned(state, user['id'], user['focus'])
-                step = self._intent(state, job, 'issue_vault_link', {}, now)
+                step = self._intent(state, job, 'issue_notes_link', {}, now)
                 self._execute(state, job, step, now, prepared)
                 return 'Your Sprout is ready for tending! Add or edit its notes with this private link, which lasts one hour.'
             if command == '/share' and len(parts) in (1, 2):
@@ -338,7 +338,7 @@ class Service:
         if len(job['steps']) >= self.limits.tools_per_turn:
             raise DomainError('This turn reached its tool limit. Please send another message.')
         schemas = {'create_project': {'name': str}, 'list_projects': {}, 'select_project': {'code': str},
-                   'update_instructions': {'instructions': str}, 'issue_vault_link': {}}
+                   'update_instructions': {'instructions': str}, 'issue_notes_link': {}}
         if name not in schemas or set(arguments) != set(schemas[name]) or any(type(arguments[k]) is not t for k, t in schemas.get(name, {}).items()):
             raise DomainError('Unsupported tool or invalid arguments.')
         if any(not v.strip() or len(v.encode()) > (4096 if k == 'instructions' else 120) for k, v in arguments.items()):
@@ -358,7 +358,7 @@ class Service:
     def _prepare_step(self, name, job_id, step_id, project_id, now):
         if name == 'create_project':
             return {'id': secrets.token_hex(16), 'code': secrets.token_hex(4).upper()}
-        if name == 'issue_vault_link':
+        if name == 'issue_notes_link':
             cap_id, token = secrets.token_hex(16), secrets.token_urlsafe(32)
             return {'id': cap_id, 'hash': token_hash(token), 'expires': now + self.limits.link_seconds,
                     'ciphertext': self.keys.encrypt({'token': token}, f'cap:{cap_id}:{project_id}:{step_id}')}
@@ -442,7 +442,7 @@ class Service:
         for step in job.get('steps', []):
             if step['name'] == 'create_project' and 'result' in step:
                 text += f'\nSprout code: {step["result"]["code"]}\nShare your Sprout:\n{self.share_url(step["result"])}'
-            if step['name'] == 'issue_vault_link' and 'capability' in step.get('result', {}):
+            if step['name'] == 'issue_notes_link' and 'capability' in step.get('result', {}):
                 text = text.replace(step['result']['capability'], '')
         text = '<next_message>'.join(split_messages(text))
         versions = versions or {}
@@ -491,7 +491,6 @@ class Service:
                     (state['outbox'].get(m.get('outbox'), {}).get('status') == 'sent'
                      or m.get('part', 0) < state['outbox'].get(m.get('outbox'), {}).get('delivered_parts', 0))
                     and state['jobs'].get(m.get('outbox'), {}).get('status') != 'failed'
-                    and not ('vault' in m['content'].lower() and re.search(r'\b[0-9a-f]{32}\b', m['content']))
                     # Exclude legacy model echoes too, without deleting the conversation audit.
                     and m['content'].strip() not in (
                         'This turn reached its model limit. Please send another message.',

@@ -192,7 +192,7 @@ class TestTransport(IsolatedAsyncioTestCase):
 
     async def test_send_preserves_plain_text_urls_citations_and_literal_symbols(self):
         text = ('Use /edit ABC123 or /help.\n[my_guide.md > Opening]\n'
-                'https://vault.example/notes#token_with_two_underscores\n'
+                'https://hypha.example/notes#token_with_two_underscores\n'
                 'https://example.test/_guide_/a*b*c?q=one_two_three#part\n'
                 'https://example.test/_guide_ https://example.test/path*\n'
                 'Price: $5. 2 * 3 = 6; snake_case_name; C#; #123. Hello 🌍')
@@ -240,7 +240,7 @@ class TestTransport(IsolatedAsyncioTestCase):
 
     async def test_http_error_omits_provider_body(self):
         async def handler(request):
-            return httpx.Response(403, json={"detail": "secret vault link https://example/#token"})
+            return httpx.Response(403, json={"detail": "secret notes link https://example/#token"})
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             with pytest.raises(PhotonError) as error:
                 await PhotonClient(client, "project", "test-secret").send("space", "agent", "reply", "key")

@@ -16,11 +16,11 @@ def test_builder_resumes_committed_mutation_and_original_tool_intent_after_crash
         env.models.builder.side_effect = [
             {'text': '', 'tool_calls': [
                 {'id': 'create', 'name': 'create_project', 'arguments': {'name': 'Bakery'}},
-                {'id': 'vault', 'name': 'issue_vault_link', 'arguments': {}},
+                {'id': 'notes', 'name': 'issue_notes_link', 'arguments': {}},
             ]},
             {'text': 'Your Sprout and its notes are ready.', 'tool_calls': []},
         ]
-        await env.service.admit(inbound(env, 'build', 'Create Bakery and open its vault'))
+        await env.service.admit(inbound(env, 'build', 'Create Bakery and open its notes'))
         job = await env.worker.claim('turn')
         execute = env.service.execute_step
         crashed = False

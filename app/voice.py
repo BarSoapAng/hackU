@@ -28,7 +28,7 @@ class VoiceError(DomainError):
 
 
 def audio_directory():
-    directory = Path(tempfile.gettempdir()) / 'acorn-voice'
+    directory = Path(tempfile.gettempdir()) / 'hypha-voice'
     directory.mkdir(mode=0o700, exist_ok=True)
     return directory
 

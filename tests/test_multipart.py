@@ -86,7 +86,7 @@ async def test_failed_or_ambiguous_second_send_stops_remaining_texts(result):
 
 
 @pytest.mark.asyncio
-async def test_navigation_after_partial_delivery_cancels_remainder_and_vault_link():
+async def test_navigation_after_partial_delivery_cancels_remainder_and_notes_link():
     env = await environment()
     job, project, _ = await create_project(env)
     _, cap, _ = await issue_capability(env, job)
@@ -104,7 +104,7 @@ async def test_navigation_after_partial_delivery_cancels_remainder_and_vault_lin
 @pytest.mark.asyncio
 @pytest.mark.parametrize('trailing', ['', '<next_message>'])
 @pytest.mark.parametrize('parts', [['First'], ['First', 'Second', 'Third']])
-async def test_vault_link_is_in_final_text_and_never_in_model_history(trailing, parts):
+async def test_notes_link_is_in_final_text_and_never_in_model_history(trailing, parts):
     env = await environment()
     job, _, _ = await create_project(env)
     await env.service.complete(job['id'], job['claim'], 'Created')

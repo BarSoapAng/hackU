@@ -20,7 +20,7 @@ from app.dashboard_costs import CostConfigurationError, CostDataError, cost_repo
 
 def safe_text(value):
     """Capability links may appear in legacy transcripts; never make them usable."""
-    return re.sub(r'https?://[^\s<>]*?/(?:notes|vault)(?:[?#][^\s<>]*)?', '[editing link omitted]', str(value), flags=re.I)
+    return re.sub(r'https?://(?:[^\s<>]*#[^\s<>]+|[^\s<>]*/notes(?:\?[^\s<>]*)?)', '[editing link omitted]', str(value), flags=re.I)
 
 
 def safe_number(value, *, integer=False):
@@ -35,7 +35,7 @@ def tool_payload(name, value, *, result=False):
         return None
     if result and isinstance(value.get('error'), str):
         return {'error': safe_text(value['error'])}
-    if result and name == 'issue_vault_link':
+    if result and name == 'issue_notes_link':
         return {'notes_link_ready': bool(value.get('capability') or value.get('notes_link_ready'))}
     if result and name == 'update_instructions':
         return {'updated': value['updated']} if isinstance(value.get('updated'), bool) else {}
