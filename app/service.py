@@ -224,7 +224,7 @@ class Service:
                 self._execute(state, job, step, now, prepared)
                 return 'Your editing link is valid for one hour.'
             if command == '/help' and len(parts) == 1:
-                return '/builder — builder mode\n/projects — your projects\n/edit CODE — edit an owned project\n/use CODE — ask a project agent\n/vault — one-hour editor link\n/help — commands\nHistory reset is unsupported.'
+                return '/builder — builder mode\n/projects — your projects\n/edit CODE — edit an owned project\n/use CODE — ask a project agent\n/vault — one-hour editor link\n/help — slash commands and help\nYou can also send /builder and ask me about slash commands.\nHistory reset is unsupported.'
             if not job['question'].startswith('/') or command in ('/reset', '/clear'):
                 return 'History reset is unsupported. Your conversation has not changed.'
             return 'Invalid command. Use /help to see available commands.'

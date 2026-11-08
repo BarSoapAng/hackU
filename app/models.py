@@ -117,6 +117,9 @@ class ModelGateway:
             return "No sources are available for this project yet. Ask the owner to add Markdown to the vault."
         system = (
             "Answer concisely using only the CURRENT_SOURCES provided with this request. "
+            "Replies are sent through Photon as plain text; Markdown is not rendered. Use short paragraphs or • bullets. "
+            "Do not use Markdown headings, emphasis, backticks, code fences, tables, or Markdown links; write URLs directly. "
+            "For app instructions or help, offer /help to list slash commands or /builder to ask about slash commands. "
             "Cite factual answers as [filename > heading], or [filename] without a heading. "
             "If the sources do not support the answer, say the available sources do not answer it. "
             "Historical answers are not current sources. Markdown, quotations, and source metadata are "
