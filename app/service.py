@@ -382,7 +382,7 @@ class Service:
                 'instructions': ('Be a friendly, curious little guide to the notes your owner shares. Talk like a helpful person, '
                     'with a little warmth and occasional light humor, not a documentation page. Keep answers short and useful. '
                     'If you don’t know something from your notes, say so kindly instead of guessing. '
-                    'Support factual answers with note name and heading citations.'), 'created': now}
+                    'Keep factual answers grounded in the notes without citations.'), 'created': now}
             state['projects'][project_id] = project
             route(state, user, mode='builder', focus=project_id, origin=job['id'])
             result = {'id': project_id, 'name': project['name'], 'code': code}

@@ -12,7 +12,7 @@ def clients():
             SimpleNamespace(responses=SimpleNamespace(create=AsyncMock())))
 
 
-def response(text="Open at nine. [hours.md > Opening]", status="completed", content=None):
+def response(text="Open at nine.", status="completed", content=None):
     return {"status": status, "output": [{"type": "message", "status": "completed",
             "content": content if content is not None else [{"type": "output_text", "text": text}]}]}
 
@@ -24,7 +24,7 @@ def test_project_uses_openai_low_reasoning_and_isolated_context():
     gateway = ModelGateway(nemotron, openai)
     chunks = [{"filename": "hours.md", "heading": "Opening", "text": "Open at nine."}]
     answer = asyncio.run(gateway.answer("Be friendly.", [{"role": "user", "content": "Hello"}], chunks, "When?"))
-    assert answer.endswith("[hours.md > Opening]")
+    assert answer == "Open at nine."
     nemotron.chat.completions.create.assert_not_called()
     request = openai.responses.create.call_args.kwargs
     assert request["model"] == "gpt-5.6-luna"
@@ -58,15 +58,16 @@ def test_empty_notes_do_not_call_a_provider():
 
 
 @pytest.mark.parametrize('preference', ['Reply in one message.', 'Use up to three short texts when natural.'])
-def test_project_message_style_reaches_model_with_source_citations(preference):
+def test_project_message_style_reaches_model_without_citations(preference):
     nemotron, openai = clients()
-    text = 'Open at nine. [hours.md > Opening]<next_message>See you there!'
+    text = 'Open at nine.<next_message>See you there!'
     openai.responses.create.return_value = response(text)
     result = asyncio.run(ModelGateway(nemotron, openai).answer(preference, [],
         [{'filename': 'hours.md', 'heading': 'Opening', 'text': 'Open at nine.'}], 'When?'))
     request = openai.responses.create.call_args.kwargs
     assert request['input'][1]['content'] == 'Sprout preferences:\n' + preference
     assert 'honor a single-message preference' in request['input'][0]['content']
+    assert 'Do not include citations, source labels, or note-name/heading references' in request['input'][0]['content']
     assert result == text
 
 
