@@ -5,7 +5,11 @@ read-only inspection of Maincloud `hackutd-xmddq` found no application tables,
 views, or procedures, only empty `init`, `onConnect`, and `onDisconnect`
 lifecycle reducers. The installed Windows CLI reports 2.14.1. It is available
 from Git Bash after `source ~/.bashrc`; the inspected WSL Ubuntu PATH did not
-contain it. No module was published and no database rows were changed.
+contain it. No module was published and no database rows were changed during
+that initial inspection. During the later configuration walkthrough, the user
+published the module. The authorized live setup then verified authenticated
+read/write, stale-CAS rejection, anonymous/unrelated read/write rejection, and
+private SQL denial (403), using the configured backend runtime identity.
 
 ## Boundary and transaction contract
 
@@ -86,8 +90,9 @@ Before production or expanding beyond the integration gate, replace the
 snapshot with partitioned private records and domain reducers, or explicitly
 approve the reduced architecture and lower measured capacity. Passing the
 mocked tests does not satisfy the authenticated live read/write/denial gate or
-prove the requested sub-second p95. The existing database remains untouched
-until live verification and publishing are explicitly requested.
+prove the requested sub-second p95. The authenticated live boundary has now
+passed; partitioned records and operation-specific reducers remain required
+before production.
 
 ## Offline checks and later deployment
 
@@ -121,7 +126,7 @@ spacetime describe hackutd-xmddq --server maincloud --json
 spacetime publish hackutd-xmddq --server maincloud --module-path db --delete-data=never
 ```
 
-Publishing builds the module and has **not** been run. Record the schema and
+Publishing builds the module. The user ran it during initial setup. Record the schema and
 module hash before and after publishing. Verify an authenticated Python read,
 a CAS write/read round trip, a stale-CAS rejection, and read/write failures
 using both no token and an unrelated identity. Confirm direct SQL access to

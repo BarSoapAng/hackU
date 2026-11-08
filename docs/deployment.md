@@ -1,5 +1,27 @@
 # Deployment and recovery runbook
 
+## Current local setup
+
+The user authorized live setup on 2026-11-07 (America/Winnipeg). Database and
+model probes passed, and the owner's real create-project/vault-link exchange
+was confirmed delivered. Windows runs one background backend and an ngrok
+HTTPS tunnel; the existing WSL/Brev forward supplies Nemotron. The live URL and
+all credentials are in ignored `.env`. This demo depends on the laptop and
+tunnels staying online; it is not a hosted production deployment.
+
+The listener PID and process logs are under `%LOCALAPPDATA%/Temp/` with names
+`hackutd-backend-listener.pid`, `hackutd-backend.stderr.log`, and
+`hackutd-ngrok.log`. The Python launcher can have a different PID from the actual
+port-8001 listener. Stop the listener before starting a replacement; never
+overlap workers. Access logs and ngrok request inspection are disabled.
+
+The `tools.local` runner loads `.env` without shell evaluation. From an activated
+environment, a later manual restart is:
+
+```bash
+python -m tools.local uvicorn app.main:production_app --factory --host 127.0.0.1 --port 8001 --workers 1 --no-access-log
+```
+
 ## Prerequisites and gates
 
 Do not declare the MVP deployed from mocked success. First review

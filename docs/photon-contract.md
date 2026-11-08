@@ -2,6 +2,14 @@
 
 Implementation phase: offline adapters and mocked validation completed. No message was sent, participant assigned, webhook destination created, or application started during implementation.
 
+Subsequent authorized live setup: the existing Photon API key passed assignment
+reads, a `2026-07-01` destination was created for `message.received`, and its
+signing secret was saved privately in `.env`. The destination was enabled after
+the public backend health check passed. The owner's real inbound text registered
+their user and triggered project creation plus a vault link; Photon confirmed
+the reply delivered after one submission. No additional participant was assigned.
+The two-participant Q&A journey and provider retry-window guarantees remain pending.
+
 Read-only inspection on 2026-11-07 confirmed `hackUTD` (`pho_prj_01m6vs9z63eh7sd0tfjyxq4qbd`), shared iMessage capacity of 25 assignments, one active assignment, and **no configured webhook destinations**. The owner assignment's destination is `+16283166196`; other participants must use their own returned destination. Participant phone numbers are not stored in this document.
 
 ## Pinned contracts

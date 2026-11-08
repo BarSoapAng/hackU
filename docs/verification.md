@@ -8,23 +8,42 @@ This report distinguishes mocked behavior from deployed behavior.
 | Integration contracts | Implemented; primary contracts recorded, existing Photon and database configuration inspected read-only |
 | First-journey implementation | Implemented: verified ingestion, routing, initial builder tools, encrypted vault capabilities, editor, indexing, project Q&A, budgets, durable jobs/outbox |
 | First-journey mocked verification | Passing; independent subagents wrote provider, API, journey, authorization, race, and recovery tests |
-| Live integration and two-person journey | Pending an explicitly requested live verification step and runtime configuration |
+| Live integration and two-person journey | Provider/database checks and the owner's real create-project/vault-link exchange passed; file upload/Q&A and second-participant checks remain pending |
 | Extensions after the live journey | Deferred as required by the plan: project rename/deletion, conversational file tools, Photon attachments, explicit reindex endpoint, broader natural-language navigation |
-| Deployment | Configuration and runbook prepared; no application build, startup, publish, enrollment, or messaging performed by this implementation |
+| Deployment | Local Windows backend and ngrok HTTPS tunnel running; Photon webhook enabled; production deployment remains pending |
 
 ## Evidence
 
+- At the user's explicit live-setup request on 2026-11-07 (America/Winnipeg),
+  the configured database passed authenticated read/write, stale-CAS rejection,
+  anonymous/unrelated read/write denial, and private SQL denial (HTTP 403).
+  The user had published the module before these checks; no clearing publish
+  was performed during setup.
+- Live Nemotron tool calling, an OpenAI `gpt-5.6-luna` response at low reasoning,
+  and Haystack document/query embeddings passed with the configured credentials.
+- The local and HTTPS `/healthz` and `/vault` endpoints returned HTTP 200;
+  unsigned webhook requests and unauthenticated vault API requests returned 401.
+  One Photon destination was created and enabled for `message.received` using
+  API version `2026-07-01`. Its signing secret is stored only in ignored `.env`.
+- A real message from the preassigned owner registered their application user,
+  created the Demo project, and issued a vault capability. The builder completed
+  in three generation requests and one worker attempt. Photon confirmed the
+  reply delivered after one submission; no duplicate project or reply was created.
+- The backend runs as one Windows process, with a background ngrok tunnel and
+  the existing WSL/Brev inference forward. Keep the laptop awake for this local
+  demo. Two targeted tests cover the new `.env` runner's quoting and secret
+  preservation; no environment secrets were committed.
 - Final offline checks: **164 Python tests and 7 subtests passed**, **11 TypeScript
   policy tests passed**, and TypeScript `--noEmit` checking passed. The Python
   suite includes actual application transitions replayed through the TypeScript
   proposal validator. The editor JavaScript passed `node --check`; pinned Python
   dependencies passed `pip check`.
-- Photon read-only inspection confirmed `hackUTD`, payload API `2026-07-01`,
+- Initial Photon read-only inspection confirmed `hackUTD`, payload API `2026-07-01`,
   `@photon-hq/contracts` 0.30.0, one active assignment, and no webhook destination.
-  No assignment or destination was created. Tests include an independently
+  No assignment or destination was created during the offline phase. Tests include an independently
   published signature vector and the authenticated event schema.
-- SpacetimeDB CLI 2.14.1 inspection found only empty lifecycle reducers in
-  `hackutd-xmddq`. The new module has not been published. Python HTTP and TypeScript
+- Initial SpacetimeDB CLI 2.14.1 inspection found only empty lifecycle reducers in
+  `hackutd-xmddq`. The module was subsequently published by the user. Python HTTP and TypeScript
   policy tests do not establish real runtime identity authorization.
 - A separate concurrent repository commit, `3b0c43a`, records successful Nemotron
   inference/tool smoke tests on Brev. Its files were preserved. Those results do
@@ -43,11 +62,11 @@ The current database is a private snapshot integration scaffold, not the final
 partitioned domain schema. Reducer proposal checks improve defense in depth but
 do not replace the planned domain reducers. Whole-state transfer includes
 unrelated project vectors and cannot establish acceptable maximum-capacity p95.
-Complete the authenticated live read/write/denial gate before expanding it;
-finish partitioning and domain reducers before production deployment.
+The authenticated live read/write/denial gate has passed. Finish partitioning
+and domain reducers before production deployment.
 
-OpenAI account access, deployed Python database identity, real inbound/outbound
-Photon delivery for both participants, real model grounding/abstention, maximum
+Real inbound/outbound Photon delivery for the second participant, dashboard
+upload followed by Q&A, real model grounding/abstention, maximum
 vault retrieval p95, and deployed crash recovery remain unverified. The live
 checks in `tools/verify_integrations.py` require `--live` and are not collected
 by the test suite. No model/provider fallback is configured.

@@ -36,10 +36,24 @@ There is no development database or in-memory fallback in production.
 ## Configuration
 
 Copy `.env.example` to an untracked `.env`. Export its values through your secret
-manager or process environment when running outside Compose. Supply separate
+manager or use the local runner below when running outside Compose. Supply separate
 Nemotron and OpenAI credentials. The database runtime token must belong to the
 identity configured in the module, independently of the CLI's management login.
 Use the Photon webhook secret for payload version `2026-07-01`.
+
+The local runner reads `.env` without executing it as shell code and preserves
+quoted JSON. After stopping any existing backend, start one process with:
+
+```bash
+python -m tools.local uvicorn app.main:production_app --factory --host 127.0.0.1 --port 8001 --workers 1 --no-access-log
+```
+
+Use the same runner for explicitly requested live probes:
+
+```bash
+python -m tools.local tools.verify_integrations database --live
+python -m tools.local tools.verify_integrations models --live
+```
 
 `ENCRYPTION_KEYS` is a JSON map of key IDs to URL-safe base64-encoded 32-byte keys.
 Generate a key locally, keep it outside the database, and preserve it across
