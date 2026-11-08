@@ -1,30 +1,18 @@
 import { Fragment, useState } from 'react'
-import { ArrowLeft, ArrowRight, ArrowUpRight, ChevronDown, ChevronRight, CircleDollarSign, FolderOpen, LayoutDashboard, Leaf, MessageSquare, RefreshCw, ShieldCheck, UserRound, Users } from 'lucide-react'
-import { AccountSwitcher } from './components/AccountSwitcher'
+import { ArrowLeft, ArrowRight, ArrowUpRight, ChevronDown, ChevronRight, FolderOpen, MessageSquare, RefreshCw, UserRound, Users } from 'lucide-react'
 import { ConversationWorkspace } from './components/ConversationWorkspace'
-import { CostsPanel } from './components/CostsPanel'
 import { Badge, Button, Card, Empty, Pagination, RequestState, SearchInput, cn } from './components/ui'
 import { accountPath, formatTime, useApi, type Account, type Overview, type Page, type Project, type ProjectDetail, type User } from './lib/api'
 
 export default function App() {
   const [selection, setSelection] = useState<{ accountId: string; projectId: string | null; conversationId: string | null } | null>(null)
   const [refresh, setRefresh] = useState(0)
-  const [view, setView] = useState<'workspace' | 'costs'>('workspace')
   function selectAccount(accountId: string, projectId: string | null = null) { setSelection({ accountId, projectId, conversationId: null }) }
-  function overview() { setSelection(null); setView('workspace') }
   return <>
     <a href="#main" className="sr-only z-50 rounded-lg bg-primary p-3 text-primary-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Skip to content</a>
-    <header className="border-b bg-card">
-      <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-8">
-        <button onClick={overview} className="flex items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Hypha dashboard overview"><span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Leaf className="size-6" aria-hidden="true" /></span><span><span className="block text-xl font-semibold tracking-tight">hypha</span><span className="block text-sm text-muted-foreground">Internal workspace</span></span></button>
-        <div className="flex flex-wrap items-center gap-3"><Badge className="hidden sm:inline-flex"><ShieldCheck className="size-4" aria-hidden="true" />Local · Read only</Badge><AccountSwitcher accountId={selection?.accountId ?? null} onSelect={selectAccount} /></div>
-      </div>
-    </header>
     <main id="main" className="mx-auto max-w-screen-2xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
-      {selection && <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-primary/20 bg-accent px-5 py-4"><div className="flex items-start gap-3"><UserRound className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" /><div><p className="font-medium">Viewing as <span className="break-all">{selection.accountId}</span></p><p className="mt-1 text-sm text-muted-foreground">Read-only view of this account’s workspace</p></div></div><Button variant="outline" onClick={overview}><ArrowLeft />Back to overview</Button></div>}
-      <nav aria-label="Dashboard sections" className="flex flex-wrap gap-2"><Button variant={view === 'workspace' ? 'default' : 'ghost'} aria-current={view === 'workspace' ? 'page' : undefined} onClick={() => setView('workspace')}><LayoutDashboard />{selection ? 'Workspace' : 'Overview'}</Button><Button variant={view === 'costs' ? 'default' : 'ghost'} aria-current={view === 'costs' ? 'page' : undefined} onClick={() => setView('costs')}><CircleDollarSign />Costs</Button></nav>
-      {view === 'costs' ? <CostsPanel accountId={selection?.accountId} projectId={selection?.projectId} refresh={refresh} onScope={selectAccount} /> : selection ? <>
-        <AccountView key={selection.accountId} accountId={selection.accountId} projectId={selection.projectId} conversationId={selection.conversationId} refresh={refresh} onRefresh={() => setRefresh(value => value + 1)} onProject={projectId => setSelection({ ...selection, projectId, conversationId: null })} onConversation={conversationId => setSelection({ ...selection, conversationId })} onBuilder={conversationId => setSelection({ ...selection, projectId: null, conversationId })} />
+      {selection ? <>
+        <AccountView key={selection.accountId} accountId={selection.accountId} projectId={selection.projectId} conversationId={selection.conversationId} refresh={refresh} onRefresh={() => setRefresh(value => value + 1)} onOverview={() => setSelection(null)} onProject={projectId => setSelection({ ...selection, projectId, conversationId: null })} onConversation={conversationId => setSelection({ ...selection, conversationId })} onBuilder={conversationId => setSelection({ ...selection, projectId: null, conversationId })} />
       </> : <OverviewView refresh={refresh} onRefresh={() => setRefresh(value => value + 1)} onSelect={selectAccount} />}
     </main>
     <footer className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-2 px-5 pb-6 text-sm text-muted-foreground sm:px-8"><span>Hypha internal dashboard</span><span>Personal development · Read-only access</span></footer>
@@ -34,7 +22,7 @@ export default function App() {
 function OverviewView({ refresh, onRefresh, onSelect }: { refresh: number; onRefresh: () => void; onSelect: (id: string, projectId?: string) => void }) {
   const request = useApi<Overview>('/api/internal/overview', refresh)
   return <>
-    <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="mb-2 flex items-center gap-2 text-sm font-medium text-primary"><LayoutDashboard className="size-4" aria-hidden="true" />Workspace overview</p><h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">A closer look at your agents.</h1><p className="mt-3 max-w-2xl leading-relaxed text-muted-foreground">Explore users, their projects, and the conversations happening inside them.</p></div><Button variant="outline" onClick={onRefresh}><RefreshCw />Refresh data</Button></div>
+    <div className="flex items-center justify-between gap-4"><h1 className="text-xl font-semibold">Dashboard</h1><Button variant="outline" onClick={onRefresh}><RefreshCw />Refresh data</Button></div>
     <RequestState {...request} />
     {request.data && <><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[
       { label: 'Registered users', value: request.data.users, icon: Users, detail: 'Everyone who has messaged' },
@@ -70,14 +58,14 @@ function ExpandedProjects({ accountId, refresh, onSelect }: { accountId: string;
   return <><RequestState {...request} />{request.data && (request.data.projects.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{request.data.projects.map(project => <button key={project.id} className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4 text-left hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onSelect(accountId, project.id)}><span><span className="block font-medium">{project.name}</span><span className="mt-1 block text-sm text-muted-foreground">{project.participant_count} participants · {project.conversation_count} conversations</span></span><ArrowUpRight className="size-4 shrink-0 text-primary" aria-hidden="true" /></button>)}</div> : <p className="text-sm text-muted-foreground">This user has no active projects. Open the account to view their builder conversation.</p>)}</>
 }
 
-function AccountView({ accountId, projectId, conversationId, refresh, onRefresh, onProject, onConversation, onBuilder }: {
+function AccountView({ accountId, projectId, conversationId, refresh, onRefresh, onOverview, onProject, onConversation, onBuilder }: {
   accountId: string; projectId: string | null; conversationId: string | null; refresh: number;
-  onRefresh: () => void; onProject: (id: string | null) => void; onConversation: (id: string) => void; onBuilder: (id: string) => void
+  onRefresh: () => void; onOverview: () => void; onProject: (id: string | null) => void; onConversation: (id: string) => void; onBuilder: (id: string) => void
 }) {
   const request = useApi<Account>(accountPath(accountId), refresh)
   const project = request.data?.projects.find(item => item.id === projectId)
   return <>
-    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"><button onClick={() => onProject(null)} className="min-h-11 rounded-lg px-2 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Account workspace</button>{projectId && <><ChevronRight className="size-4" aria-hidden="true" /><span className="break-all font-medium text-foreground">{project?.name ?? 'Project'}</span></>}{!projectId && conversationId && <><ChevronRight className="size-4" aria-hidden="true" /><span className="font-medium text-foreground">Builder conversation</span></>}</nav>
+    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"><Button variant="ghost" onClick={onOverview}><ArrowLeft />All users</Button><ChevronRight className="size-4" aria-hidden="true" /><button onClick={() => onProject(null)} className="min-h-11 rounded-lg px-2 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{accountId}</button>{projectId && <><ChevronRight className="size-4" aria-hidden="true" /><span className="break-all font-medium text-foreground">{project?.name ?? 'Project'}</span></>}{!projectId && conversationId && <><ChevronRight className="size-4" aria-hidden="true" /><span className="font-medium text-foreground">Builder conversation</span></>}</nav>
     <RequestState {...request} />
     {request.data && <>
       {projectId ? <ProjectWorkspace key={projectId} accountId={accountId} projectId={projectId} conversationId={conversationId} refresh={refresh} onRefresh={onRefresh} onConversation={onConversation} /> : conversationId ? <ConversationWorkspace key={conversationId} accountId={accountId} conversationId={conversationId} refresh={refresh} /> : <>

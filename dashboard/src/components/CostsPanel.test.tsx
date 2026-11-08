@@ -85,13 +85,12 @@ test('changing cost scope immediately clears the previous account report', async
   expect(screen.getByRole('status').textContent).toContain('Loading')
 })
 
-test('cost navigation retains project scope, can expand to its account, and clears scope on exit', async () => {
+test('account navigation returns to users after opening a project', async () => {
   const user = { id: '+15550000001', phone: '+15550000001', project_count: 1, conversation_count: 0, last_active: null }
   const project = { id: 'p1', name: 'Study assistant', code: 'STUDY', participant_count: 0, conversation_count: 0, last_active: null }
   const fetch = vi.fn((path: string) => {
     let data: unknown
-    if (path.includes('/costs?')) data = report()
-    else if (path.endsWith('/overview')) data = { users: 1, owners: 1, projects: 1, conversations: 0, updated_at: 1767225600 }
+    if (path.endsWith('/overview')) data = { users: 1, owners: 1, projects: 1, conversations: 0, updated_at: 1767225600 }
     else if (path.includes('/users?')) data = { items: [user], total: 1, offset: 0, limit: 50 }
     else if (path.endsWith('/projects/p1')) data = { project, participants: [] }
     else data = { user, projects: [project], builder_conversation: null }
@@ -102,47 +101,6 @@ test('cost navigation retains project scope, can expand to its account, and clea
   fireEvent.click(await screen.findByRole('button', { name: 'View account +15550000001' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Explore project' }))
   await screen.findByRole('heading', { name: 'Study assistant' })
-  fireEvent.click(screen.getByRole('button', { name: 'Costs' }))
-  await screen.findByText('By provider')
-  let url = new URL(fetch.mock.calls.filter(([path]) => path.includes('/costs?')).at(-1)![0], 'http://localhost')
-  expect(url.searchParams.get('account_id')).toBe(user.id)
-  expect(url.searchParams.get('project_id')).toBe(project.id)
-  fireEvent.click(screen.getByRole('button', { name: 'All account costs' }))
-  await screen.findByText('By provider')
-  url = new URL(fetch.mock.calls.filter(([path]) => path.includes('/costs?')).at(-1)![0], 'http://localhost')
-  expect(url.searchParams.get('account_id')).toBe(user.id)
-  expect(url.searchParams.has('project_id')).toBe(false)
-  fireEvent.click(screen.getByRole('button', { name: 'Back to overview' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Costs' }))
-  await screen.findByText('By provider')
-  url = new URL(fetch.mock.calls.filter(([path]) => path.includes('/costs?')).at(-1)![0], 'http://localhost')
-  expect(url.searchParams.has('account_id')).toBe(false)
-  expect(url.searchParams.has('project_id')).toBe(false)
-})
-
-test('drilling into account and project costs preserves the applied date range and provider', async () => {
-  const account = { id: '+15550000001', label: '+15550000001', estimated_usd: 1, known_estimated_usd: 1, providers: { spacetimedb: 1 }, request_count: 0, unpriced_requests: 0 }
-  const project = { ...account, id: 'research', label: 'Research project', account_id: account.id, deleted: false }
-  const fetch = vi.fn((path: string) => Promise.resolve(new Response(JSON.stringify(path.includes('/costs?')
-    ? report({ accounts: [account], projects: [project] })
-    : path.includes('/users?') ? { items: [], total: 0, offset: 0, limit: 50 }
-    : { users: 0, owners: 0, projects: 0, conversations: 0, updated_at: 1767225600 }))))
-  vi.stubGlobal('fetch', fetch)
-  render(<App />)
-  fireEvent.click(screen.getByRole('button', { name: 'Costs' }))
-  await screen.findByText('By provider')
-  fireEvent.change(screen.getByRole('combobox', { name: 'Provider' }), { target: { value: 'spacetimedb' } })
-  fireEvent.change(screen.getByLabelText('Start date (UTC)'), { target: { value: '2026-01-01' } })
-  fireEvent.change(screen.getByLabelText('End date (UTC)'), { target: { value: '2026-01-07' } })
-  fireEvent.submit(screen.getByRole('form', { name: 'Cost filters' }))
-  fireEvent.click(await screen.findByRole('button', { name: 'View costs for +15550000001' }))
-  fireEvent.click(await screen.findByRole('button', { name: 'View costs for Research project' }))
-  await screen.findByRole('heading', { name: 'Project costs' })
-  await screen.findByText('By provider')
-  let url = new URL(fetch.mock.calls.filter(([path]) => path.includes('/costs?')).at(-1)![0], 'http://localhost')
-  expect(Object.fromEntries(url.searchParams)).toEqual({ start: '2026-01-01', end: '2026-01-07', account_id: account.id, project_id: project.id, provider: 'spacetimedb' })
-  fireEvent.click(screen.getByRole('button', { name: 'All account costs' }))
-  await screen.findByText('By provider')
-  url = new URL(fetch.mock.calls.filter(([path]) => path.includes('/costs?')).at(-1)![0], 'http://localhost')
-  expect(Object.fromEntries(url.searchParams)).toEqual({ start: '2026-01-01', end: '2026-01-07', account_id: account.id, provider: 'spacetimedb' })
+  fireEvent.click(screen.getByRole('button', { name: 'All users' }))
+  expect(await screen.findByRole('button', { name: 'View account +15550000001' })).toBeTruthy()
 })
