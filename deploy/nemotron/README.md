@@ -2,7 +2,7 @@
 
 Target instance: `secure-amethyst-ferret`, one NVIDIA L40S, reached using Brev from WSL. The builder uses Nemotron 3.5 Lightning 30B with four-bit weights through Marlin on Ada; OpenAI project answers and embeddings remain separate.
 
-The configuration adapts NVIDIA's [Ada serving recipe](https://github.com/NVIDIA-AI-Blueprints/nemotron-voice-agent/blob/main/docker/docker-compose.nemotron35-lightning.yaml). It pins the checkpoint revision and vLLM version, limits total context to 16,384 tokens, and permits two sequences. Actual memory usage, latency, and tool-call correctness still require a requested live test.
+The configuration adapts NVIDIA's [Ada serving recipe](https://github.com/NVIDIA-AI-Blueprints/nemotron-voice-agent/blob/main/docker/docker-compose.nemotron35-lightning.yaml). It pins the checkpoint revision and vLLM version, limits total context to 16,384 tokens, and permits two sequences. Live inference verification passed on 2026-11-07 (America/Winnipeg).
 
 ## Preparation
 
@@ -10,7 +10,7 @@ Copy this directory to the instance and prepare its secret and container image f
 
 ```bash
 brev exec secure-amethyst-ferret 'mkdir -p ~/hackutd-nemotron'
-scp deploy/nemotron/{compose.yaml,prepare.sh,start.sh,README.md} secure-amethyst-ferret:~/hackutd-nemotron/
+scp deploy/nemotron/{compose.yaml,prepare.sh,start.sh,verify.py,README.md} secure-amethyst-ferret:~/hackutd-nemotron/
 brev exec secure-amethyst-ferret 'bash ~/hackutd-nemotron/prepare.sh'
 ```
 
@@ -18,24 +18,55 @@ brev exec secure-amethyst-ferret 'bash ~/hackutd-nemotron/prepare.sh'
 
 ## Driver prerequisite
 
-Inspection found NVIDIA driver `565.57.01`, Ubuntu 22.04, Docker 27.3.1, Compose 2.29.7, and 107 GB free disk. The CUDA 13 serving image requires R580 or newer for this configuration. R565 is not a supported target for its forward-compatibility option. See [vLLM driver requirements](https://docs.vllm.ai/en/v0.31.0/getting_started/installation/gpu/#running-on-systems-with-older-cuda-drivers).
+The instance runs NVIDIA driver `580.178.04`, Ubuntu 22.04, Docker 27.3.1, and Compose 2.29.7. The CUDA 13 serving image requires R580 or newer for this configuration. R565 is not a supported target for its forward-compatibility option. See [vLLM driver requirements](https://docs.vllm.ai/en/v0.31.0/getting_started/installation/gpu/#running-on-systems-with-older-cuda-drivers).
 
-Upgrade to a supported driver and reboot before starting. Review the package transaction first because this image includes NVIDIA's R565 driver and Fabric Manager metapackages. Preparation does not modify drivers or reboot the VM.
+The approved driver upgrade replaced 20 old R565 driver-related packages with 17 R580 packages, without unrelated upgrades. Reboot completed, and `nvidia-smi` confirmed `580.178.04` before startup. The transaction log is `/home/ubuntu/hackutd-nemotron/driver-upgrade.log`. Preparation scripts do not modify drivers or reboot the VM.
 
-The image holds its old NVIDIA packages. A simulation replacing the installed R565 packages explicitly with `nvidia-driver-580-server` succeeds: 20 old driver-related packages removed, 17 packages installed, and no unrelated upgrades. The inspected candidate is `580.178.04`. Recheck the transaction before applying it; do not broadly unhold packages or upgrade the entire OS.
-
-Preparation completed: the CUDA 13.0.2 image was downloaded and pinned by digest, shell syntax and Compose configuration validated, and the generated `.env` confirmed private (mode `600`). About 86 GB disk remains. No driver change, reboot, inference startup, model-weight download, or live model test has been performed.
+On a replacement VM, inspect and simulate its driver package transaction before upgrading; do not broadly unhold packages or upgrade the entire OS.
 
 ## Start and connect
 
-Run these only when server startup is requested, after the driver upgrade:
+The service is currently running. To start it again and establish a local tunnel from WSL:
 
 ```bash
 brev exec secure-amethyst-ferret 'bash ~/hackutd-nemotron/start.sh'
 brev port-forward secure-amethyst-ferret --port 8000:8000
 ```
 
-Keep the forwarding terminal open. From WSL, the builder endpoint is `http://127.0.0.1:8000/v1`, the model ID is `nemotron-builder`, and bearer authentication uses the private generated key. The service binds only to the VM's loopback interface; a later deployed backend needs its own private tunnel/network connection or an authenticated HTTPS proxy.
+The builder endpoint is `http://127.0.0.1:8000/v1`, the model ID is `nemotron-builder`, and bearer authentication uses `NEMOTRON_API_KEY` in `/home/ubuntu/hackutd-nemotron/.env` (mode `600`). Brev 0.6.337 leaves the SSH forward running after this command returns. Re-establish it after WSL or the tunnel stops. WSL authenticated requests and Windows `/health` access both passed. The service binds only to the VM's loopback interface; a later deployed backend needs its own private tunnel/network connection or an authenticated HTTPS proxy.
+
+For the tested builder behavior, send `chat_template_kwargs={"enable_thinking": false}` with chat-completion requests (via `extra_body` when using a compatible SDK). The smoke tests use temperature zero. Keep the application's 12,000-input-token, 2,048-output-token, and two-concurrent-request limits within the server's configured capacity.
+
+## Live verification
+
+`verify.py` uses only Python's standard library. Run it on the VM:
+
+```bash
+brev exec secure-amethyst-ferret 'python3 ~/hackutd-nemotron/verify.py'
+```
+
+To check the entire WSL tunnel path without saving another copy of the secret, run from this repository after establishing the forward:
+
+```bash
+set -o pipefail
+ssh -T secure-amethyst-ferret cat /home/ubuntu/hackutd-nemotron/.env |
+  python3 deploy/nemotron/verify.py --env-file /dev/stdin
+```
+
+The 2026-11-07 run through WSL passed:
+
+| Check | Result |
+|---|---|
+| Missing and invalid credentials | Both rejected with HTTP 401 |
+| Authenticated model discovery | `nemotron-builder` available |
+| Short text response | Correct, 0.30 s |
+| Automatic tool call | Correct function and JSON arguments, 0.40 s |
+| Tool-result follow-up | Correct use of synthetic result, 0.34 s |
+| Two concurrent long-context requests | Both correct; 11,431 input tokens each; 1.27 s and 1.43 s |
+
+These are smoke-test timings with very short outputs, not a throughput benchmark or a verification of application tools. Reasoning was disabled. No application/database mutation was invoked.
+
+The checkpoint downloaded successfully (20.08 GiB). vLLM reported 17.82 GiB for model loading; `nvidia-smi` showed 39,715 MiB used of 46,068 MiB after allocating the serving caches. About 65 GiB disk remained. The container and Brev instance were running at handoff.
 
 Inspect logs or stop the model process from WSL:
 
