@@ -33,7 +33,7 @@ async def test_jev_policy_and_request(fits, social, meaning, emoji, only):
             'fits': {'noul': fits}, 'social': {'noul': social}, 'meaning': {'choice': meaning}}})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
         decision = await JevClient(http, 'synthetic').decide('Thanks https://app/vault#secret',
-            [{'role': 'assistant', 'content': 'https://app/vault#secret'}], {'name': 'Acorn'})
+            [{'role': 'assistant', 'content': 'https://app/vault#secret'}], {'name': 'Hypha'})
     assert decision == {'status': 'decided', 'emoji': emoji, 'only': only}
 
 
@@ -42,7 +42,7 @@ async def test_jev_policy_and_request(fits, social, meaning, emoji, only):
 async def test_jev_errors_are_not_no_reaction(response):
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: response)) as http:
         with pytest.raises(JevError):
-            await JevClient(http, 'synthetic').decide('thanks', [], {'name': 'Acorn'})
+            await JevClient(http, 'synthetic').decide('thanks', [], {'name': 'Hypha'})
 
 
 @pytest.mark.parametrize('action', ['add', 'remove'])

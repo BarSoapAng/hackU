@@ -239,7 +239,7 @@ def create_dashboard_app(store, *, clock=time.time, cache_seconds=2, costs_confi
             if close:
                 await close()
 
-    app = FastAPI(title='Acorn internal dashboard', docs_url=None, redoc_url=None,
+    app = FastAPI(title='Hypha internal dashboard', docs_url=None, redoc_url=None,
                   openapi_url=None, lifespan=lifespan)
 
     @app.middleware('http')

@@ -19,14 +19,14 @@ filename/heading metadata is supplied to the answer model for citations. Context
 trimming can reduce the five selected chunks. Citation labels and abstention are
 prompted, with no independent citation-entailment or factual-support validator.
 
-Acorn's basic welcome/help, explicit command list, common vault requests, and share
+Hypha's basic welcome/help, explicit command list, common vault requests, and share
 requests are deterministic and do not consume a model generation. `/edit` enters
 editing; `/builder` is removed. Vault tool traces expose only a readiness flag;
 the server appends the fresh full HTTPS vault URL outside model context. Historical
 failure notices and old ID-only vault replies are excluded from model context while
 remaining in the stored conversation audit.
 
-Acorn may choose one to three texts per model reply, separating them internally
+Hypha may choose one to three texts per model reply, separating them internally
 with `<next_message>` on its own line. Project agents default to one text; their
 saved instructions can encourage up to three short texts or require one message.
 The builder sees the current instructions and can update this style through

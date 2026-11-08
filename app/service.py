@@ -309,7 +309,7 @@ class Service:
                     return (f'Hi, I’m {project["name"]}! Nice to meet you. 👋\n\n'
                             'I’m here to help with the notes my owner shares with me. What are you curious about?\n\n'
                             'Say “help” if you want to learn about making or sharing agents of your own.')
-                return ('Hey! I’m Acorn 🐿️ I help you turn your notes into little iMessage agents.\n\n'
+                return ('Hey! I’m Hypha 🐿️ I help you turn your notes into little iMessage agents.\n\n'
                         'Here’s what we can do together:\n'
                         'Create an agent and give it a personality\n'
                         'Add or update its knowledge in a private vault\n'

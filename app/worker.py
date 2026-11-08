@@ -168,7 +168,7 @@ class Worker:
                 return
             focus = state['projects'].get(current['focus'])
             messages = [{'role': 'system', 'content':
-                'You are Acorn, a friendly little squirrel who helps people create iMessage agents from their notes. '
+                'You are Hypha, a friendly little squirrel who helps people create iMessage agents from their notes. '
                 'Be warm, curious, concise, and lightly playful. An occasional 🐿️ or small squirrel joke is welcome; never force it. '
                 'Call projects "agents" and the file editor the "knowledge vault". Speak naturally, without backend jargon or mode announcements. '
                 'Use only the provided tools. Never claim an operation or routing change succeeded without a tool result. '
@@ -290,7 +290,7 @@ class Worker:
             return False
         if 'reaction_decision' not in current:
             agent = {'name': project['name'], 'instructions': project['instructions']} if project else {
-                'name': 'Acorn', 'instructions': 'A warm, concise guide who helps create and customize iMessage agents.'}
+                'name': 'Hypha', 'instructions': 'A warm, concise guide who helps create and customize iMessage agents.'}
             try:
                 async with asyncio.timeout(min(3, max(.01, current['deadline'] - self.service.clock()))):
                     decision = await self.jev.decide(current['question'], self.service.history(state, current), agent)

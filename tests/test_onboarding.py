@@ -18,7 +18,7 @@ def test_greetings_and_help_explain_capabilities_without_dumping_commands(messag
         await env.service.admit(inbound(env, 'welcome', message))
         state = await env.service.snapshot()
         body = reply(env, state, 'welcome')
-        assert 'Acorn' in body and 'Create an agent' in body and 'Share it with a friend' in body
+        assert 'Hypha' in body and 'Create an agent' in body and 'Share it with a friend' in body
         assert 'ask me about slash commands' in body
         assert not re.search(r'/[a-z]+', body)
         assert state['jobs']['welcome']['status'] == 'completed'
@@ -48,7 +48,7 @@ def test_edit_switches_modes_and_builder_is_no_longer_a_command():
         await env.service.admit(inbound(env, 'use', '/use ' + project['code'] + '.'))
         await env.service.admit(inbound(env, 'agent-hello', 'hiii'))
         greeting = reply(env, await env.service.snapshot(), 'agent-hello')
-        assert f'I’m {project["name"]}' in greeting and 'I’m Acorn' not in greeting
+        assert f'I’m {project["name"]}' in greeting and 'I’m Hypha' not in greeting
         await env.service.admit(inbound(env, 'old-command', '/builder'))
         state = await env.service.snapshot()
         assert state['users'][job['user']]['mode'] == 'customer'

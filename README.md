@@ -84,7 +84,7 @@ per-user dispatch gates serialize navigation against the bounded Photon send.
 Durable leases and claims protect against stale job commits. Scaling replicas
 requires replacing the process-local dispatch gates first.
 
-Acorn greets users with a short capabilities overview. `/help` shows that same
+Hypha greets users with a short capabilities overview. `/help` shows that same
 overview; ask about slash commands or send `/commands` for the separate command list.
 Commands are `/projects`, `/edit` (return to creating/editing), `/edit CODE`,
 `/use CODE`, `/vault`, `/share [CODE]`, `/help`, and `/commands`. File CRUD and imports
