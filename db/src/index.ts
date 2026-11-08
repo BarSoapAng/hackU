@@ -45,7 +45,7 @@ export const commit_state = spacetimedb.reducer(
     requireBackend(ctx.sender.toHexString(), ctx.env.BACKEND_IDENTITY);
     const row = ctx.db.appState.id.find(0);
     try {
-      validateCommit(expected, row?.revision ?? 0n, value);
+      validateCommit(expected, row?.revision ?? 0n, value, row?.value ?? '{}', Number(ctx.timestamp.microsSinceUnixEpoch) / 1e6);
     } catch (error) {
       throw new SenderError(error instanceof Error ? error.message : 'invalid state');
     }

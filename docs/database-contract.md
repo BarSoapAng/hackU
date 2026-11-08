@@ -32,7 +32,7 @@ The Python adapter uses these exact calls with `confirmed=true`:
   serialized_state]`: commits only at the expected revision and increments it.
 
 The read procedure uses one `withTx` transaction. The reducer rejects stale
-revisions and malformed state without mutation. Missing singleton state reads
+revisions, malformed state, and invalid domain proposals without mutation. Missing singleton state reads
 as revision zero, allowing a safe first write when updating the existing empty
 module (an update does not rerun `init`). See [HTTP calls](https://spacetimedb.com/docs/http/database/)
 and [procedure transactions](https://spacetimedb.com/docs/functions/procedures/).
@@ -54,12 +54,33 @@ test double, never a production fallback.
 ## Scope limitation before the live gate
 
 This deliberately small integration-gate schema stores all logical records in
-one snapshot. Python transaction callbacks implement ownership, domain quotas,
-leases, versions, and operation deduplication; the database enforces backend
-identity, JSON-object shape, and atomic revision comparison. These are **not**
-independently enforced domain reducers. A compromised backend can propose
-invalid domain state. Whole-state reads/writes also transfer unrelated project
-vectors and do not establish the plan's maximum-vault retrieval performance.
+one snapshot. Python transaction callbacks implement user authorization,
+leases, routing, and application operations. In addition to identity and CAS,
+the reducer independently checks proposed state for:
+
+- Immutable project ownership/public codes and irreversible retained deletion
+  tombstones; no more than five active projects per owner and 100 total.
+- Twenty files, 128 KiB per file, 1 MiB current text, and 1,000 declared chunks
+  per project; actual UTF-8 byte counts, consecutive file versions on edits,
+  and current file/version references for committed chunks.
+- No resurrection of removed file IDs while indexing deduplication records
+  remain; retained completed tool intents, results, and continuation bindings.
+- Four generations, three tool calls, five attempts per job, and 10/100 pending
+  turns per user/deployment; attempt and generation counters cannot decrease.
+- A 30-day minimum for job/event/outbox deduplication, and immutable capability
+  scope/expiry with irreversible revocation.
+
+These are proposal invariants, **not** operation-specific reducers. The Python
+backend still supplies lease, routing and ownership checks, deterministic
+chunk-count computation, daily budgets, and token hashes/encryption. The
+database checks cannot reconstruct whether a proposal passed every such
+operation check. Whole-state reads/writes also transfer unrelated project
+vectors and do not establish maximum-vault retrieval performance.
+
+The listed reducer ceilings are fixed at the plan's starting defaults. Python
+deployment limits may be lowered, but raising one requires a coordinated
+module change and validation. Compact project tombstones/public codes are
+retained indefinitely in this integration schema, so codes are never reused.
 
 Before production or expanding beyond the integration gate, replace the
 snapshot with partitioned private records and domain reducers, or explicitly
@@ -83,8 +104,9 @@ npm test
 Use a Node release accepted by the SDK's pinned engine range:
 `^22.23.4 || ^24.22.1 || >=26.12.1`. Local TypeScript and policy checks passed
 under the installed Node 22.14.0, but npm reported its unsupported engine; that
-does not validate host execution. Eighteen mocked Python adapter tests and two
-TypeScript policy tests passed; the module type check passed with no output.
+does not validate host execution. Eighteen mocked Python adapter tests, 26
+service/worker scenarios, and eleven TypeScript policy tests passed; the module
+type check passed with no output.
 
 At an explicitly requested live step, first obtain an explicit backend runtime
 identity/token pair and preserve it outside source control. Configure the
