@@ -129,6 +129,9 @@ def test_builder_generation_budget_stops_before_fifth_provider_call():
         assert nemotron.chat.completions.create.await_count == 2
         assert state["jobs"]["budget"]["generations"] == 2
         assert state["jobs"]["budget"]["status"] == "failed"
+        payload = service.keys.decrypt(state["outbox"]["budget"]["payload"], "outbox:budget")["text"]
+        assert 'model service is temporarily unavailable' in payload
+        assert 'model limit' not in payload
         assert "sensitive" not in json.dumps(state)
         assert not state["projects"]
     asyncio.run(exercise())

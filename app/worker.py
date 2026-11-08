@@ -75,19 +75,22 @@ class Worker:
                 raise DomainError('This turn reached its model limit. Please send another message.', 429)
             consume(state, f'generation-day:{int(now // 86400)}', self.service.limits.generations_per_day)
             current['generations'] += 1
-        await self.service.store.transaction(reserve)
+            return current['generations']
+        return await self.service.store.transaction(reserve)
 
     async def generate(self, job, call):
         from app.models import ProviderError
         while True:
             async with self.generations:
-                await self.reserve_generation(job)
+                generation = await self.reserve_generation(job)
                 try:
                     async with asyncio.timeout(max(.01, job['deadline'] - self.service.clock())):
                         return await call()
                 except ProviderError as exc:
                     if not exc.retryable:
                         raise
+                    if generation >= self.service.limits.generations_per_turn:
+                        raise DomainError('The model service is temporarily unavailable. Please try again shortly.', 503) from None
             await asyncio.sleep(1)
 
     async def reserve_embeddings(self, job, tokens):

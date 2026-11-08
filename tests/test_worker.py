@@ -277,12 +277,29 @@ def test_generation_retry_budget_is_shared_and_stops_before_fifth_request(monkey
         await env.service.admit(inbound(env, 'turn', 'Hello'))
         job = await env.worker.claim('turn')
         provider = AsyncMock(side_effect=ProviderError('temporary', retryable=True))
-        with pytest.raises(DomainError, match='model limit'):
+        with pytest.raises(DomainError, match='model service is temporarily unavailable') as failure:
             await env.worker.generate(job, provider)
+        assert failure.value.status == 503
         state = await env.service.snapshot()
         assert provider.await_count == 4
         assert state['jobs'][job['id']]['generations'] == 4
         assert state['usage'][f'generation-day:{int(env.clock.now // 86400)}'] == 4
+    asyncio.run(scenario())
+
+
+def test_generation_can_recover_on_last_allowed_attempt(monkeypatch):
+    async def no_sleep(_):
+        return None
+    monkeypatch.setattr('app.worker.asyncio.sleep', no_sleep)
+
+    async def scenario():
+        env = await environment()
+        await env.service.admit(inbound(env, 'turn', 'Hello'))
+        job = await env.worker.claim('turn')
+        provider = AsyncMock(side_effect=[ProviderError('temporary', retryable=True)] * 3 + ['Recovered'])
+        assert await env.worker.generate(job, provider) == 'Recovered'
+        assert provider.await_count == 4
+        assert (await env.service.snapshot())['jobs'][job['id']]['generations'] == 4
     asyncio.run(scenario())
 
 
