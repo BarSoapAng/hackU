@@ -21,6 +21,52 @@ class Worker:
         self.transcriptions = asyncio.Lock()
         self.generations = asyncio.Semaphore(2)
         self.stopping = asyncio.Event()
+        self.typing = {}
+
+    async def refresh_typing(self, inbound=None, *, stop=False):
+        if inbound:
+            routes = [(inbound.phone, inbound.space_id, inbound.agent_id)]
+            self.typing.setdefault(routes[0], None)
+        else:
+            routes = list(self.typing)
+        for route in routes:
+            user_id, space_id, agent_id = route
+            async with self.service.gates[user_id]:
+                if route not in self.typing:
+                    continue
+                state = await self.service.snapshot()
+                now = self.service.clock()
+                user = state['users'].get(user_id)
+                assignment = state['assignments'].get(user_id)
+
+                def current(row):
+                    return (user and assignment and row['user'] == user_id
+                        and row['space_id'] == space_id and row['agent_id'] == agent_id
+                        and row['revision'] == user['revision']
+                        and row.get('assignment') == assignment['id']
+                        and row['destination'] == assignment['destination'])
+
+                pending = not stop and (
+                    any(current(job) and job['status'] in ('queued', 'running') and job['deadline'] > now
+                        for job in state['jobs'].values() if job['kind'] == 'turn')
+                    or any(current(box) and box['status'] in ('pending', 'submitting') and not box['attempts']
+                           for box in state['outbox'].values()))
+                last = self.typing[route]
+                if pending and last is not None and time.monotonic() - last < 5:
+                    continue
+                if not pending:
+                    del self.typing[route]
+                    if last is None:
+                        continue  # The reply was already sent before its read receipt returned.
+                try:
+                    async with asyncio.timeout(2):
+                        result = await self.photon.set_typing(space_id, agent_id, bool(pending))
+                    if result.status in ('unknown', 'failed'):
+                        logging.getLogger(__name__).warning('typing_unconfirmed status=%s', result.status)
+                except (PhotonError, httpx.HTTPError, TimeoutError) as error:
+                    logging.getLogger(__name__).warning('typing_failed type=%s', type(error).__name__)
+                if pending:
+                    self.typing[route] = time.monotonic()
 
     async def claim(self, kind):
         now, claim = self.service.clock(), secrets.token_hex(16)
@@ -481,6 +527,7 @@ class Worker:
                         from app.service import revoke_capability
                         revoke_capability(state, state['capabilities'][cap_id])
             await self.service.store.transaction(finish)
+        await self.refresh_typing()
 
     def _delivered(self, state, box, now):
         box['delivered_parts'] = box.get('delivered_parts', 0) + 1
@@ -572,6 +619,15 @@ class Worker:
         await self.service.store.transaction(clean)
 
     async def run(self):
+        try:
+            await self._run_with_recovery()
+        finally:
+            try:
+                await self.refresh_typing(stop=True)
+            except DatabaseUnavailable:
+                pass
+
+    async def _run_with_recovery(self):
         failures = 0
         while not self.stopping.is_set():
             try:
@@ -612,6 +668,7 @@ class Worker:
                 for box in state['outbox'].values():
                     if box['status'] == 'pending':
                         await self.dispatch(box['id'])
+                await self.refresh_typing()
                 now = self.service.clock()
                 if now - last_assignments >= 60:
                     try:

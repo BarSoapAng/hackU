@@ -35,7 +35,8 @@ class TestApi(IsolatedAsyncioTestCase):
                                "https://example.test", Limits(), lambda: self.now[0])
         self.secret = "whsec_" + base64.b64encode(b"s" * 32).decode()
         self.photon = SimpleNamespace(mark_read=AsyncMock(return_value=SendResult("dispatched", "read-action-1")))
-        self.app = create_app(self.service, SimpleNamespace(photon=self.photon), self.secret, "project")
+        self.worker = SimpleNamespace(photon=self.photon, refresh_typing=AsyncMock())
+        self.app = create_app(self.service, self.worker, self.secret, "project")
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app), base_url="https://example.test")
         self.auth = {"Authorization": "Bearer token-one"}
 
@@ -162,6 +163,17 @@ class TestApi(IsolatedAsyncioTestCase):
         assert state["receipts"]["event-1"]["read_receipt_attempted"]
         self.photon.mark_read.assert_awaited_once_with("message-1")
         assert state["users"]["+14155550123"]["sequence"] == 1
+        self.worker.refresh_typing.assert_awaited_once()
+
+    async def test_typing_starts_only_after_read_receipt_returns(self):
+        async def read(message_id):
+            self.worker.refresh_typing.assert_not_awaited()
+            return SendResult("dispatched", "read-action-1")
+        self.photon.mark_read.side_effect = read
+        raw, headers = self.delivery()
+        await self.client.post("/webhooks/photon", content=raw, headers=headers)
+        self.worker.refresh_typing.assert_awaited_once()
+        assert self.worker.refresh_typing.call_args.args[0].space_id == "space"
 
     async def test_concurrent_redeliveries_submit_only_one_read_receipt(self):
         raw, headers = self.delivery()
@@ -206,6 +218,7 @@ class TestApi(IsolatedAsyncioTestCase):
         assert not state["users"] and not state["jobs"]
         assert state["receipts"]["event-1"]["status"] == "rejected"
         self.photon.mark_read.assert_not_awaited()
+        self.worker.refresh_typing.assert_not_awaited()
 
     async def test_commands_do_not_wait_for_worker(self):
         raw, headers = self.delivery(text="/help")

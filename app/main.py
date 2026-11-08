@@ -131,6 +131,7 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
                 result = await worker.photon.mark_read(inbound.message_id)
                 if result.status in ("unknown", "failed"):
                     logging.getLogger(__name__).warning("read_receipt_unconfirmed event=%s status=%s", inbound.event_id, result.status)
+                await worker.refresh_typing(inbound)
         except (DatabaseUnavailable, PhotonError) as error:
             logging.getLogger(__name__).warning("read_receipt_failed event=%s type=%s", inbound.event_id, type(error).__name__)
 

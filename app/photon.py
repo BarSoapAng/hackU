@@ -267,6 +267,19 @@ class PhotonClient:
         self._check(response)
         return self._result(response)
 
+    async def set_typing(self, space_id: str, agent_id: str, typing: bool) -> SendResult:
+        if not space_id or not agent_id:
+            raise ValueError("A typing update requires its space and sender.")
+        try:
+            response = await self._request("POST", f"/spaces/{quote(space_id, safe='')}/typing",
+                                          json={"senderId": agent_id, "typing": typing})
+        except httpx.TransportError:
+            return SendResult("unknown")
+        if response.status_code >= 500 or response.status_code in {408, 409}:
+            return SendResult("unknown")
+        self._check(response)
+        return self._result(response)
+
     async def download_audio(self, attachment_id, path):
         """Read authenticated metadata and bounded bytes; never follow provider URLs."""
         from app.voice import VoiceError

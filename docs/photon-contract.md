@@ -98,6 +98,16 @@ This is best effort: a process exit after claiming the attempt can lose the rece
 ambiguous submissions are not retried. HTTP 202 means queued, and provider privacy
 settings can suppress visibility. See [Photon's read-receipt contract](https://photon.codes/docs/beta/api-reference/messages/mark-a-message-as-read).
 
+After the read-receipt request returns, the worker starts a best-effort typing
+indicator through `POST /projects/{id}/spaces/{spaceId}/typing` with
+`{"senderId": "<inbound agent ID>", "typing": true}`. The pinned OpenAPI contract
+requires callers to refresh transient typing updates; the worker refreshes every
+five seconds while a turn or its first outbound submission is pending. Each update
+is a fresh request without a reused idempotency key. It sends `typing: false` after
+submission, cancellation, expiry, or worker shutdown, unless another turn is still
+pending in the same Space. Typing failures never block replies. Visibility and
+expiry remain provider-controlled; this behavior has only been tested with mocks.
+
 Persist the payload and idempotency key before calling `send`. `POST /projects/{id}/messages` receives `spaceId` from the inbound Space, `senderId` from `receivedBy.id`, and `{type: "text", format: "plain", text: ...}`. Do not derive the sender ID from a phone number or assume all participants share the owner's line.
 
 The send endpoint returns HTTP 202 and a message representation. Preserve its exact status and provider ID: `dispatched` means submitted, `accepted` is channel acceptance without confirmed delivery, and `delivered` is confirmed delivery. Reconcile known IDs using `GET /projects/{id}/messages/{messageId}`. Only confirmed delivery should remove protected delivery material and make the reply visible in delivered model history.

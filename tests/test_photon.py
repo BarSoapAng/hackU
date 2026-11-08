@@ -119,6 +119,23 @@ def assignment(phone="+14155550123", destination="+16283166196", identifier="ass
 
 
 class TestTransport(IsolatedAsyncioTestCase):
+    async def test_typing_uses_space_sender_and_boolean_without_replaying_refreshes(self):
+        requests = []
+        async def handler(request):
+            requests.append(request)
+            return httpx.Response(202, json={"id": "typing-action", "status": "dispatched"})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            photon = PhotonClient(client, "project", "test-secret")
+            for typing in (True, True, False):
+                assert (await photon.set_typing("space/1", "agent-1", typing)).status == "dispatched"
+        assert len(requests) == 3
+        for request, typing in zip(requests, (True, True, False)):
+            assert request.method == "POST"
+            assert request.url.raw_path == b"/v1/projects/project/spaces/space%2F1/typing"
+            assert request.headers["Authorization"] == "Bearer test-secret"
+            assert "Idempotency-Key" not in request.headers
+            assert json.loads(request.content) == {"senderId": "agent-1", "typing": typing}
+
     async def test_mark_read_uses_inbound_id_stable_key_and_no_body(self):
         requests = []
         async def handler(request):
