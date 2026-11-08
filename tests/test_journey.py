@@ -9,7 +9,7 @@ import pytest
 
 from app.config import Limits
 from app.database import MemoryStore
-from app.models import ModelGateway
+from app.models import ModelGateway, ProviderError
 from app.photon import Inbound, SendResult
 from app.security import Keyring
 from app.service import Service
@@ -192,4 +192,105 @@ def test_indexing_budget_exhaustion_keeps_file_pending_and_intact():
         assert state["files"][file["id"]]["status"] == "pending"
         assert file["id"] not in state["chunks"]
         assert state["jobs"]["index:" + file["id"] + ":1"]["retry_at"] > 1000
+    asyncio.run(exercise())
+
+
+def test_transient_query_embedding_requeues_with_bounded_attempts_and_shared_budget():
+    async def exercise():
+        service, worker, nemotron, openai, photon = await setup()
+        now = [1000]
+        service.clock = lambda: now[0]
+        project, _, _ = await ready_project(service, worker, nemotron)
+        await service.admit(event("guest-use", "/use " + project["code"], guest=True))
+        worker.embeddings.embed_query = AsyncMock(side_effect=ProviderError("temporary", retryable=True))
+        await service.admit(event("query-retries", "When?", guest=True))
+        for attempt in range(1, 6):
+            await worker.run_job(await worker.claim("turn"))
+            state = await service.snapshot()
+            job = state["jobs"]["query-retries"]
+            assert job["attempts"] == attempt
+            if attempt < 5:
+                assert job["status"] == "queued"
+                assert "query-retries" not in state["outbox"]
+                assert await worker.claim("turn") is None
+                now[0] = job["retry_at"]
+            else:
+                assert job["status"] == "failed"
+        assert worker.embeddings.embed_query.await_count == 5
+        assert state["usage"]["embedding-day:0"] >= 10
+        openai.responses.create.assert_not_called()
+    asyncio.run(exercise())
+
+
+def test_retry_preserves_completed_tool_steps_and_pending_capability():
+    async def exercise():
+        service, worker, nemotron, openai, photon = await setup()
+        await service.admit(event("retry-builder", "Create a project"))
+        job = await worker.claim("turn")
+        create = await service.record_intent(job["id"], job["claim"], "create_project", {"name": "Bakery"})
+        await service.execute_step(job["id"], job["claim"], create["id"])
+        issue = await service.record_intent(job["id"], job["claim"], "issue_vault_link", {})
+        await service.execute_step(job["id"], job["claim"], issue["id"])
+        before = await service.snapshot()
+        await worker.fail(job, ProviderError("temporary", retryable=True))
+        after = await service.snapshot()
+        assert after["jobs"][job["id"]]["status"] == "queued"
+        assert after["jobs"][job["id"]]["steps"] == before["jobs"][job["id"]]["steps"]
+        assert after["capabilities"] == before["capabilities"]
+        assert after["delivery_material"] == before["delivery_material"]
+        assert len(after["projects"]) == 1
+    asyncio.run(exercise())
+
+
+def test_transient_retry_near_deadline_fails_without_extending_turn():
+    async def exercise():
+        service, worker, nemotron, openai, photon = await setup(Limits(turn_seconds=1))
+        await service.admit(event("near-deadline", "Create a project"))
+        job = await worker.claim("turn")
+        await worker.fail(job, ProviderError("temporary", retryable=True))
+        current = (await service.snapshot())["jobs"][job["id"]]
+        assert current["status"] == "failed"
+        assert current["deadline"] == 1001
+        assert "retry_at" not in current
+    asyncio.run(exercise())
+
+
+def test_query_token_limit_rejects_before_embedding_charge_or_provider_call():
+    async def exercise():
+        service, worker, nemotron, openai, photon = await setup()
+        project, _, _ = await ready_project(service, worker, nemotron)
+        await service.admit(event("guest-use", "/use " + project["code"], guest=True))
+        worker.embeddings.embed_query = AsyncMock()
+        before = (await service.snapshot())["usage"]["embedding-day:0"]
+        await service.admit(event("huge-query", "界🙂" * 4000, guest=True))
+        await worker.run_job(await worker.claim("turn"))
+        state = await service.snapshot()
+        assert state["jobs"]["huge-query"]["status"] == "failed"
+        assert state["usage"]["embedding-day:0"] == before
+        worker.embeddings.embed_query.assert_not_called()
+        openai.responses.create.assert_not_called()
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("reason", ["expired", "attempts"])
+def test_exhausted_index_job_marks_only_its_current_file_version_failed(reason):
+    async def exercise():
+        service, worker, nemotron, openai, photon = await setup()
+        _, token = await create_project(service, worker, nemotron)
+        file = await service.save_file(token, "hours.md", "# Opening\nWe open at nine.")
+        job_id = "index:" + file["id"] + ":1"
+        def exhaust(state):
+            state["jobs"][job_id]["deadline" if reason == "expired" else "attempts"] = 999 if reason == "expired" else 5
+        await service.store.transaction(exhaust)
+        assert await worker.claim("index") is None
+        state = await service.snapshot()
+        assert state["files"][file["id"]]["status"] == "failed"
+        assert state["jobs"][job_id]["status"] == "failed"
+        await service.save_file(token, "hours.md", "# Opening\nNow ten.", file["id"], 1)
+        def stale(state):
+            state["jobs"][job_id]["status"] = "queued"
+        await service.store.transaction(stale)
+        claimed = await worker.claim("index")
+        assert claimed["version"] == 2
+        assert (await service.snapshot())["files"][file["id"]]["status"] == "pending"
     asyncio.run(exercise())

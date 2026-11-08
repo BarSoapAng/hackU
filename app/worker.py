@@ -19,9 +19,15 @@ class Worker:
         def take(state):
             initialize(state)
             jobs = state['jobs']
+            def exhaust(job):
+                cancel_job(state, job, 'failed')
+                if job['kind'] == 'index':
+                    file = state['files'].get(job['file'])
+                    if file and file['version'] == job['version'] and file['project'] == job['project']:
+                        file['status'] = 'failed'
             for job in jobs.values():
                 if job['status'] in ('queued', 'running') and job['deadline'] <= now:
-                    cancel_job(state, job, 'failed')
+                    exhaust(job)
             active = [j for j in jobs.values() if j['status'] == 'running' and j.get('lease', 0) > now]
             if kind == 'index' and any(j['kind'] == 'index' for j in active):
                 return None
@@ -35,7 +41,7 @@ class Worker:
                 if job.get('user') and any(j.get('user') == job['user'] and j['status'] in ('queued', 'running') and j['sequence'] < job['sequence'] for j in jobs.values()):
                     continue
                 if job['attempts'] >= 5:
-                    cancel_job(state, job, 'failed')
+                    exhaust(job)
                     continue
                 if kind == 'index':
                     key = f'index-hour:{job["file"]}:{int(now // 3600)}'
@@ -173,7 +179,10 @@ class Worker:
             if not chunks:
                 await self.service.complete(job['id'], job['claim'], 'No sources are available yet. The owner can add Markdown in the vault.')
                 return
-            await self.reserve_embeddings(job, token_count(current['question']))
+            query_tokens = token_count(current['question'])
+            if not current['question'].strip() or query_tokens > 8000:
+                raise DomainError('Please send a shorter, nonempty question.')
+            await self.reserve_embeddings(job, query_tokens)
             query = await self.embeddings.embed_query(current['question'])
             selected = cosine_retrieve(query, chunks, model=self.embeddings.model, dimensions=self.embeddings.dimensions,
                 preprocessing_version=self.embeddings.preprocessing_version)
@@ -200,11 +209,8 @@ class Worker:
         for offset in range(0, len(chunks), 16):
             batch = chunks[offset:offset + 16]
             await self.reserve_embeddings(job, sum(token_count(c['text']) for c in batch))
-            vectors = await self.embeddings.embed_chunks(batch)
-            for chunk, vector in zip(batch, vectors, strict=True):
-                rows.append({**chunk, 'embedding': vector, 'file_id': file['id'], 'version': file['version'],
-                    'model': self.embeddings.model, 'dimensions': self.embeddings.dimensions,
-                    'preprocessing_version': self.embeddings.preprocessing_version})
+            enriched = await self.embeddings.embed_chunks(batch)
+            rows.extend({**chunk, 'file_id': file['id'], 'version': file['version']} for chunk in enriched)
         now = self.service.clock()
         def commit(state):
             current = check_job(state, job['id'], job['claim'], now)
@@ -257,6 +263,10 @@ class Worker:
                     current.update(status='queued', retry_at=now + min(60, 2 ** current['attempts']))
                 else:
                     current['status'], file['status'] = 'failed', 'failed'
+                return
+            delay = min(60, 2 ** current['attempts'])
+            if getattr(error, 'retryable', False) and current['attempts'] < 5 and now + delay < current['deadline']:
+                current.update(status='queued', retry_at=now + delay)
                 return
             cancel_job(state, current, 'failed')
             message = str(error) if isinstance(error, DomainError) and error.status != 409 else 'I could not finish this turn. Please try again.'
