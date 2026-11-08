@@ -280,8 +280,10 @@ def production_app() -> FastAPI:
     embeddings = HaystackEmbeddings(settings.openai_api_key)
     http = httpx.AsyncClient()
     photon = PhotonClient(http, settings.photon_project_id, settings.photon_api_key)
+    from app.reactions import JevClient
+    jev = JevClient(http, settings.typesafe_api_key) if settings.typesafe_api_key else None
     service = Service(store, Keyring.from_json(settings.encryption_keys, settings.active_key), settings.public_url, Limits.from_env())
-    app = create_app(service, Worker(service, models, embeddings, photon), settings.photon_webhook_secret,
+    app = create_app(service, Worker(service, models, embeddings, photon, jev), settings.photon_webhook_secret,
                      settings.photon_project_id, run_worker=True)
 
     async def close():
