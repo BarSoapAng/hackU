@@ -131,7 +131,7 @@ class TestApi(IsolatedAsyncioTestCase):
         assert "localStorage" not in response.text and "sessionStorage" not in response.text
         assert ".innerHTML" not in response.text
 
-    def delivery(self, *, event_id="event-1", text="hello", kind="human", received="2026-01-01T00:00:00Z"):
+    def delivery(self, *, event_id="event-1", text="Help me create an agent", kind="human", received="2026-01-01T00:00:00Z"):
         def user(identifier, kind, phone):
             return {"id": identifier, "kind": kind, "handle": phone, "projectId": "project", "platform": "imessage"}
         body = {"id": event_id, "type": "message.received", "apiVersion": "2026-07-01", "source": "imessage.photon",
@@ -230,3 +230,42 @@ class TestApi(IsolatedAsyncioTestCase):
             assert state["assignments"]["+14155550124"]["destination"] == "+16283166222"
             assert calls == ["list", "recover", "run"]
         assert worker.stopping.is_set() and app.state.worker_task.cancelled()
+
+    async def test_share_page_is_public_without_exposing_private_vault_data(self):
+        response = await self.client.get('/a/FIRST')
+        assert response.status_code == 200
+        assert 'Meet First' in response.text and 'Your iMessage number' in response.text
+        assert 'token-one' not in response.text and 'Answer from sources.' not in response.text
+        assert 'default-src' in response.headers['content-security-policy']
+        assert (await self.client.get('/a/UNKNOWN')).status_code == 404
+        await self.service.store.transaction(lambda state: state['projects']['p1'].update(name='<script>alert(1)</script> __CODE__'))
+        page = (await self.client.get('/a/FIRST')).text
+        assert '<script>alert(1)</script>' not in page
+        assert '&lt;script&gt;alert(1)&lt;/script&gt; __CODE__' in page
+
+    async def test_share_opt_in_connects_correct_number_and_remembers_it_without_creating_user(self):
+        self.photon.enroll = AsyncMock(return_value=Assignment('guest-assignment', '+14155550999', '+16283166222', self.now[0]))
+        response = await self.client.post('/api/agents/FIRST/connect', json={'phone': '+1 (415) 555-0999'})
+        assert response.status_code == 200
+        assert response.json() == {'destination': '+16283166222', 'message': '/use FIRST'}
+        assert self.photon.enroll.call_args.args[0] == '+14155550999'
+        assert self.photon.enroll.call_args.args[1].startswith('join:')
+        state = await self.service.snapshot()
+        assert state['assignments']['+14155550999']['destination'] == '+16283166222'
+        assert state['assignments']['+14155550123']['destination'] == '+16283166196'
+        assert '+14155550999' not in state['users']
+        cookie = response.headers['set-cookie']
+        assert 'HttpOnly' in cookie and 'Secure' in cookie and '+14155550999' not in cookie
+        page = (await self.client.get('/a/SECOND')).text
+        assert 'data-destination="+16283166222"' in page and 'data-code="SECOND"' in page
+        self.photon.mark_read.assert_not_awaited()
+
+    async def test_share_rejects_invalid_requests_before_enrollment_and_handles_capacity(self):
+        self.photon.enroll = AsyncMock(side_effect=PhotonError('PHOTON_ASSIGNMENT_CAPACITY'))
+        assert (await self.client.post('/api/agents/FIRST/connect', json={'phone': '4155550999'})).status_code == 400
+        assert (await self.client.post('/api/agents/UNKNOWN/connect', json={'phone': '+14155550999'})).status_code == 404
+        assert (await self.client.post('/api/agents/FIRST/connect', headers={'Origin': 'https://unrelated.test'}, json={'phone': '+14155550999'})).status_code == 403
+        self.photon.enroll.assert_not_awaited()
+        response = await self.client.post('/api/agents/FIRST/connect', json={'phone': '+14155550999'})
+        assert response.status_code == 503 and 'spots are full' in response.json()['detail']
+        assert '+14155550999' not in (await self.service.snapshot())['assignments']

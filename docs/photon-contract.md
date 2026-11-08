@@ -32,7 +32,20 @@ The first journey must verify the schema against a real signed inbound event. Th
 
 Use `GET /projects/{id}/platforms/imessage/assignments`, following all pages and excluding released rows. Reuse an active normalized handle before creating. Count all active assignments, including unsupported email assignments, against the configured 25-seat cap. Photon remains the final capacity authority.
 
-The explicit operator method serializes enrollment within one process, sends a stable caller-provided `Idempotency-Key`, and uses `POST` with `{"handle":"+..."}`. Store `assignmentId`, `assignedPhoneNumber`, and `createdAt`. A timeout/ambiguous server error triggers another assignment listing before any retry; if unresolved, report `PHOTON_ASSIGNMENT_UNKNOWN` without another write. Do not run multiple enrollment processes concurrently.
+Explicit operator enrollment and share-page opt-in use the same method: serialize enrollment within one process, send a stable caller-provided `Idempotency-Key`, and use `POST` with `{"handle":"+..."}`. Store `assignmentId`, `assignedPhoneNumber`, and `createdAt`. A timeout/ambiguous server error triggers another assignment listing before any retry; if unresolved, report `PHOTON_ASSIGNMENT_UNKNOWN` without another write. Do not run multiple enrollment processes concurrently.
+
+An agent's public `/a/CODE` page lets a recipient enter their own iMessage number and
+explicitly connect before composing the first message. The API normalizes the number,
+checks the public agent, limits connection attempts, reuses existing assignments,
+and persists the returned destination before opening Messages. Connection and periodic
+assignment refresh share a process-local gate. A secure encrypted browser cookie
+remembers the recipient's routing for 30 days. A shared agent link never contains a
+vault capability. No app user or conversation is created until a verified inbound text.
+This demo still has 25 shared-line seats; the form does not prove control of a number,
+so verified-phone onboarding/abuse controls remain necessary for a broad public rollout.
+Messages links use the recipient's actual assigned destination and an encoded
+`/use CODE` draft, with a visible copy fallback; device-specific launch and prefill
+behavior still needs an actual Messages-client check.
 
 Operator command, only when participant enrollment is requested:
 

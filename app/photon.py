@@ -308,7 +308,7 @@ class PhotonClient:
         return assignments
 
     async def enroll(self, phone: str, idempotency_key: str, capacity: int = 25) -> Assignment:
-        """Operator-only preassignment. Never called from webhook ingestion."""
+        """Explicit operator or share-link opt-in. Never called from webhook ingestion."""
         phone = normalize_phone(phone)
         if not idempotency_key:
             raise ValueError("Enrollment requires a stable operation idempotency key.")

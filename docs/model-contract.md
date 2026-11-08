@@ -10,6 +10,22 @@ Inputs use a conservative UTF-8 byte bound, plus message/schema framing allowanc
 
 `app/retrieval.py` uses one deterministic splitter for saving quotas and indexing: approximately 300 words with 50-word overlap, separate Markdown headings, and at most 8,000 `cl100k_base` tokens per chunk. Filename and heading metadata survive retrieval. Vectors are tagged with `text-embedding-3-small`, configured dimensions (default 1,536), and `markdown-v1`; incompatible vectors are excluded from cosine scoring. The caller must supply only the selected project's current, ready file versions and recheck those versions before dispatch.
 
+Ranking is descending cosine similarity between the current question embedding and
+each eligible chunk embedding; the highest five are passed toward answer generation.
+Scores are similarity values, not calibrated confidence, and are not included in the
+model's source JSON. There is no relevance cutoff, keyword/hybrid search, reranker,
+clarity/quality scoring, or conversational query rewrite. Only chunk text is embedded;
+filename/heading metadata is supplied to the answer model for citations. Context
+trimming can reduce the five selected chunks. Citation labels and abstention are
+prompted, with no independent citation-entailment or factual-support validator.
+
+Acorn's basic welcome/help, explicit command list, common vault requests, and share
+requests are deterministic and do not consume a model generation. `/edit` enters
+editing; `/builder` is removed. Vault tool traces expose only a readiness flag;
+the server appends the fresh full HTTPS vault URL outside model context. Historical
+failure notices and old ID-only vault replies are excluded from model context while
+remaining in the stored conversation audit.
+
 Haystack's `OpenAIDocumentEmbedder` and `OpenAITextEmbedder` both use the OpenAI endpoint and the same dimensions. Document calls accept at most 32 chunks, so each adapter call makes one bounded embedding batch. The worker reserves each batch's tokens first. Query embedding tokens also count toward the deployment budget. Missing, nonfinite, zero, or wrong-dimension embeddings cannot be marked ready. Haystack's raw provider-error logger is disabled to avoid logging document bodies from error responses. Set `HAYSTACK_TELEMETRY_ENABLED=false` in the runtime environment. Tokenizer data must be cached during dependency preparation so indexing does not depend on a first-request download.
 
 Pinned and tested Python dependencies: `openai==2.15.0`, `haystack-ai==3.4.1`, `tiktoken==0.14.0`.

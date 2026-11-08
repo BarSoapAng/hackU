@@ -5,6 +5,7 @@ import re
 import secrets
 import time
 from collections import defaultdict
+from urllib.parse import quote
 
 from app.config import Limits
 from app.security import token_hash
@@ -24,6 +25,29 @@ def initialize(state):
 
 def redact_links(text):
     return re.sub(r'https?://[^\s<>]*?/vault#[^\s<>]+', '[vault link omitted]', text)
+
+
+def is_greeting(text):
+    return bool(re.fullmatch(r'h+i+|he+y+|hello+|hi+ there|hey there', text.casefold().strip(' .!?')))
+
+
+def chat_command(text):
+    if text.startswith('/'):
+        return text
+    query = text.casefold().strip(' .!?')
+    if is_greeting(text) or query in (
+            'help', 'what can you do', 'how does this work', 'what are you here for'):
+        return '/help'
+    if query in ('commands', 'slash commands', 'slash command') or re.fullmatch(
+            r'(?:what|show|list|tell|explain|help).*\bslash commands?\b.*', query):
+        return '/commands'
+    if query in ('vault', 'my vault', 'open my vault', 'open the vault', 'vault link',
+                 'send me my vault link', 'give me my vault link', 'open my knowledge vault'):
+        return '/vault'
+    if query in ('share', 'share agent', 'share my agent', 'share this agent', 'share link',
+                 'how do i share my agent', 'how can i share my agent'):
+        return '/share'
+    return None
 
 
 def available(state, project_id):
@@ -136,7 +160,7 @@ class Service:
         async with self.gates[event.phone]:
             snapshot = await self.snapshot()
             user = snapshot['users'].get(event.phone)
-            prepared = self._prepare_step('issue_vault_link', event.event_id, f'{event.event_id}:0', user['focus'], now) if user and event.text.strip().lower() == '/vault' else None
+            prepared = self._prepare_step('issue_vault_link', event.event_id, f'{event.event_id}:0', user['focus'], now) if user and (chat_command(event.text.strip()) or '').lower() == '/vault' else None
             def accept(state):
                 initialize(state)
                 if event.event_id in state['receipts']:
@@ -154,7 +178,7 @@ class Service:
                     'mode': 'builder', 'focus': None, 'selected': None, 'revision': 0, 'sequence': 0})
                 pending = [j for j in state['jobs'].values() if j['status'] in ('queued', 'running') and j['kind'] == 'turn']
                 text = redact_links(event.text.strip())
-                deterministic = text.startswith('/') or bool(re.search(r'\b(reset|clear|erase|forget|delete)\b.*\b(history|conversation|chat|memory)\b', text, re.I))
+                deterministic = bool(chat_command(text)) or bool(re.search(r'\b(reset|clear|erase|forget|delete)\b.*\b(history|conversation|chat|memory)\b', text, re.I))
                 if not deterministic and state['usage'].get(f'generation-day:{int(now // 86400)}', 0) >= self.limits.generations_per_day:
                     receipt['reason'] = 'The generation limit has been reached. Please try again tomorrow.'
                     self._notice(state, user, event, receipt['reason'], now)
@@ -208,14 +232,15 @@ class Service:
         self._outbox(state, job, text, [], {}, now)
 
     def _command(self, state, user, job, now, prepared=None):
-        parts = job['question'].split()
+        parts = (chat_command(job['question']) or job['question']).split()
         command = parts[0].lower() if parts else ''
         try:
-            if command == '/builder' and len(parts) == 1:
+            if command == '/edit' and len(parts) == 1:
                 route(state, user, mode='builder', origin=job['id'])
-                return 'Builder mode. Your editing focus is restored.'
+                project = state['projects'].get(user['focus'])
+                return f'Let’s tinker with {project["name"]}! What would you like to change?' if project else 'Let’s make a little agent! What should it help people with?'
             if command in ('/edit', '/use') and len(parts) == 2:
-                project = by_code(state, parts[1])
+                project = by_code(state, parts[1].rstrip('.,!'))
                 if not project:
                     raise DomainError('Unknown project code.')
                 if command == '/edit':
@@ -223,22 +248,54 @@ class Service:
                     route(state, user, mode='builder', focus=project['id'], origin=job['id'])
                 else:
                     route(state, user, mode='customer', selected=project['id'], origin=job['id'])
-                return f'Selected {project["name"]} ({project["code"]}).'
+                return (f'Let’s tinker with {project["name"]}! Tell me what to change, or ask for its vault.' if command == '/edit'
+                        else f'You’re chatting with {project["name"]} now! What would you like to know?')
             if command == '/projects' and len(parts) == 1:
                 projects = [p for p in state['projects'].values() if p['owner'] == user['id'] and not p.get('deleted')]
-                return '\n'.join(f'{p["name"]}: {p["code"]}' for p in projects) or 'You do not own any projects yet. Ask me to create one.'
+                return '\n'.join(f'{p["name"]}: {p["code"]}' for p in projects) or 'No agents in your little grove yet. Tell me what you’d like to make!'
             if command == '/vault' and len(parts) == 1:
                 owned(state, user['id'], user['focus'])
                 step = self._intent(state, job, 'issue_vault_link', {}, now)
                 self._execute(state, job, step, now, prepared)
-                return 'Your editing link is valid for one hour.'
+                return 'Your knowledge vault is ready! Add or edit the notes your agent learns from. This private link lasts one hour.'
+            if command == '/share' and len(parts) in (1, 2):
+                project = by_code(state, parts[1].rstrip('.,!')) if len(parts) == 2 else available(
+                    state, user['selected'] if user['mode'] == 'customer' else user['focus'])
+                if not project:
+                    raise DomainError('I couldn’t find that agent. Check the code and try again.')
+                return f'Send this link to a friend to chat with {project["name"]}:\n{self.share_url(project)}'
             if command == '/help' and len(parts) == 1:
-                return '/builder — builder mode\n/projects — your projects\n/edit CODE — edit an owned project\n/use CODE — ask a project agent\n/vault — one-hour editor link\n/help — slash commands and help\nYou can also send /builder and ask me about slash commands.\nHistory reset is unsupported.'
+                if user['mode'] == 'customer' and is_greeting(job['question']):
+                    project = available(state, user['selected'])
+                    return (f'Hi, I’m {project["name"]}! Nice to meet you. 👋\n\n'
+                            'I’m here to help with the notes my owner shares with me. What are you curious about?\n\n'
+                            'Say “help” if you want to learn about making or sharing agents of your own.')
+                return ('Hey! I’m Acorn 🐿️ I help you turn your notes into little iMessage agents.\n\n'
+                        'Here’s what we can do together:\n'
+                        'Create an agent and give it a personality\n'
+                        'Add or update its knowledge in a private vault\n'
+                        'Ask it questions about those notes\n'
+                        'Share it with a friend\n\n'
+                        'What would you like to make? You can also ask me about slash commands for shortcuts.')
+            if (command == '/commands' and len(parts) == 1) or (command == '/help' and parts[1:] == ['commands']):
+                return ('Here are your shortcuts 🐿️\n\n'
+                        '/help — what I can help with\n'
+                        '/commands — these shortcuts\n'
+                        '/projects — your agents and their codes\n'
+                        '/edit — create an agent or return to editing\n'
+                        '/edit CODE — edit one of your agents\n'
+                        '/use CODE — chat with an agent\n'
+                        '/vault — open your private knowledge vault\n'
+                        '/share — get a link to share this agent\n'
+                        '/share CODE — get a link for a specific agent')
             if not job['question'].startswith('/') or command in ('/reset', '/clear'):
                 return 'History reset is unsupported. Your conversation has not changed.'
-            return 'Invalid command. Use /help to see available commands.'
+            return 'I don’t know that shortcut. Ask me about slash commands to see the list.'
         except DomainError as exc:
             return str(exc)
+
+    def share_url(self, project):
+        return f'{self.public_url}/a/{quote(project["code"], safe="")}'
 
     def _intent(self, state, job, name, arguments, now):
         if len(job['steps']) >= self.limits.tools_per_turn:
@@ -285,7 +342,10 @@ class Service:
             if project_id in state['projects'] or any(p['code'] == code for p in state['projects'].values()):
                 raise DomainError('Project code allocation conflicted. Please try again.', 409)
             project = {'id': project_id, 'owner': user['id'], 'name': args['name'].strip(), 'code': code,
-                'instructions': 'Give concise answers grounded in current sources, with filename and heading citations.', 'created': now}
+                'instructions': ('Be a friendly, curious little guide to the notes your owner shares. Talk like a helpful person, '
+                    'with a little warmth and occasional light humor, not a documentation page. Keep answers short and useful. '
+                    'If you don’t know something from your notes, say so kindly instead of guessing. '
+                    'Support factual answers with filename and heading citations.'), 'created': now}
             state['projects'][project_id] = project
             route(state, user, mode='builder', focus=project_id, origin=job['id'])
             result = {'id': project_id, 'name': project['name'], 'code': code}
@@ -341,8 +401,10 @@ class Service:
     def _complete(self, state, job, text, now, versions=None):
         text = redact_links(text)
         for step in job.get('steps', []):
-            if step['name'] == 'create_project' and 'result' in step and step['result'].get('code') not in text:
-                text += f'\nProject code: {step["result"]["code"]}'
+            if step['name'] == 'create_project' and 'result' in step:
+                text += f'\nAgent code: {step["result"]["code"]}\nShare your agent:\n{self.share_url(step["result"])}'
+            if step['name'] == 'issue_vault_link' and 'capability' in step.get('result', {}):
+                text = text.replace(step['result']['capability'], '')
         versions = versions or {}
         if not source_versions_current(state, versions):
             raise DomainError('Sources are updating. Please ask again shortly.', 409)
@@ -357,7 +419,7 @@ class Service:
                 if cap['expires'] <= now:
                     raise DomainError('The editing link expired. Request /vault again.', 409)
                 material = self.keys.decrypt(state['delivery_material'][cap['id']], f'cap:{cap["id"]}:{cap["project"]}:{cap["step"]}')
-                links.append(f'{self.public_url}/vault#{material["token"]}')
+                links.append(f'Open your vault:\n{self.public_url}/vault#{material["token"]}')
                 caps.append(cap['id'])
         self._outbox(state, job, '\n'.join([text, *links]), caps, versions, now)
         for cap_id in caps:
@@ -385,6 +447,7 @@ class Service:
                 if m['created'] > self.clock() - 30 * 86400 and (m['role'] != 'assistant' or (
                     state['outbox'].get(m.get('outbox'), {}).get('status') == 'sent'
                     and state['jobs'].get(m.get('outbox'), {}).get('status') != 'failed'
+                    and not ('vault' in m['content'].lower() and re.search(r'\b[0-9a-f]{32}\b', m['content']))
                     # Exclude legacy model echoes too, without deleting the conversation audit.
                     and m['content'].strip() not in (
                         'This turn reached its model limit. Please send another message.',

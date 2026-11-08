@@ -121,7 +121,7 @@ def test_failed_replies_and_legacy_limit_echoes_do_not_reach_the_next_model_turn
     async def exercise():
         service, worker, nemotron, openai, photon = await setup()
         nemotron.chat.completions.create.side_effect = RuntimeError('synthetic outage')
-        await service.admit(event('outage', 'hi'))
+        await service.admit(event('outage', 'What should I name my agent?'))
         await worker.run_job(await worker.claim('turn'))
         await worker.dispatch('outage')
 
@@ -129,17 +129,17 @@ def test_failed_replies_and_legacy_limit_echoes_do_not_reach_the_next_model_turn
         nemotron.chat.completions.create.side_effect = None
         nemotron.chat.completions.create.return_value = {'choices': [
             {'finish_reason': 'stop', 'message': {'content': notice}}]}
-        await service.admit(event('legacy-echo', 'hi'))
+        await service.admit(event('legacy-echo', 'What should I name my agent?'))
         await worker.run_job(await worker.claim('turn'))
         await worker.dispatch('legacy-echo')
 
         nemotron.chat.completions.create.return_value = {'choices': [
             {'finish_reason': 'stop', 'message': {'content': 'Hello! Ask me about slash commands or send /help.'}}]}
-        await service.admit(event('recovered', 'hi'))
+        await service.admit(event('recovered', 'What should I name my agent?'))
         await worker.run_job(await worker.claim('turn'))
         messages = nemotron.chat.completions.create.call_args.kwargs['messages']
         assert not any(m['role'] == 'assistant' for m in messages)
-        assert messages[-1] == {'role': 'user', 'content': 'hi'}
+        assert messages[-1] == {'role': 'user', 'content': 'What should I name my agent?'}
         state = await service.snapshot()
         assert state['jobs']['outage']['status'] == 'failed'
         assert state['jobs']['legacy-echo']['status'] == 'completed'

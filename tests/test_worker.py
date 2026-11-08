@@ -76,7 +76,7 @@ def test_old_worker_claim_cannot_commit_after_reclaim():
 def test_one_model_turn_per_user_and_fifo_with_retry_wait():
     async def scenario():
         env = await environment()
-        await env.service.admit(inbound(env, 'first', 'Hello'))
+        await env.service.admit(inbound(env, 'first', 'Help me create an agent'))
         await env.service.admit(inbound(env, 'second', 'Next question'))
         await env.service.admit(inbound(env, 'guest', 'Other user', guest=True))
         first = await env.worker.claim('turn')
@@ -164,10 +164,30 @@ def test_empty_project_answer_works_without_nemotron_or_openai():
         await env.worker.answer(await env.worker.claim('turn'))
         state = await env.service.snapshot()
         assert state['jobs']['ask']['status'] == 'completed'
-        assert 'No sources' in env.service.keys.decrypt(state['outbox']['ask']['payload'], 'outbox:ask')['text']
+        body = env.service.keys.decrypt(state['outbox']['ask']['payload'], 'outbox:ask')['text']
+        assert project['name'] in body and 'waiting for my first notes' in body
+        assert 'Markdown' not in body and 'No sources' not in body
         env.models.builder.assert_not_called()
         env.models.answer.assert_not_called()
         env.embeddings.embed_query.assert_not_called()
+    asyncio.run(scenario())
+
+
+def test_pending_notes_are_not_described_as_never_uploaded():
+    async def scenario():
+        env = await environment()
+        job, project, _ = await create_project(env)
+        token, _, _ = await issue_capability(env, job)
+        await env.service.complete(job['id'], job['claim'], 'Created')
+        await env.service.save_file(token, 'notes.md', 'These notes are still indexing.')
+        await env.service.admit(inbound(env, 'use', '/use ' + project['code'], guest=True))
+        await env.service.admit(inbound(env, 'ask', 'What do your notes say?', guest=True))
+        await env.worker.answer(await env.worker.claim('turn'))
+        state = await env.service.snapshot()
+        body = env.service.keys.decrypt(state['outbox']['ask']['payload'], 'outbox:ask')['text']
+        assert project['name'] in body and 'notes aren’t ready' in body
+        assert 'first notes' not in body
+        env.models.answer.assert_not_called()
     asyncio.run(scenario())
 
 
@@ -274,7 +294,7 @@ def test_generation_retry_budget_is_shared_and_stops_before_fifth_request(monkey
 
     async def scenario():
         env = await environment()
-        await env.service.admit(inbound(env, 'turn', 'Hello'))
+        await env.service.admit(inbound(env, 'turn', 'Help me create an agent'))
         job = await env.worker.claim('turn')
         provider = AsyncMock(side_effect=ProviderError('temporary', retryable=True))
         with pytest.raises(DomainError, match='model service is temporarily unavailable') as failure:
@@ -294,7 +314,7 @@ def test_generation_can_recover_on_last_allowed_attempt(monkeypatch):
 
     async def scenario():
         env = await environment()
-        await env.service.admit(inbound(env, 'turn', 'Hello'))
+        await env.service.admit(inbound(env, 'turn', 'Help me create an agent'))
         job = await env.worker.claim('turn')
         provider = AsyncMock(side_effect=[ProviderError('temporary', retryable=True)] * 3 + ['Recovered'])
         assert await env.worker.generate(job, provider) == 'Recovered'

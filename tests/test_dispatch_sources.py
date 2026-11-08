@@ -50,7 +50,7 @@ def test_navigation_cancels_stale_source_reply_without_sending_updating_notice()
         env = await environment()
         token, file = await completed_answer(env)
         await env.service.save_file(token, file['name'], 'New source.', file['id'], 1)
-        await env.service.admit(inbound(env, 'navigate', '/builder', guest=True))
+        await env.service.admit(inbound(env, 'navigate', '/edit', guest=True))
         await env.worker.dispatch('question')
         assert (await env.service.snapshot())['outbox']['question']['status'] == 'cancelled'
         env.photon.send.assert_not_called()

@@ -114,7 +114,7 @@ def test_cross_user_ownership_and_independent_editing_focus():
         await env.service.admit(inbound(env, 'edit-guest', f'/edit {guest_project["code"]}'))
         owner = (await env.service.snapshot())['users'][owner_job['user']]
         assert {k: owner[k] for k in ('mode', 'focus', 'selected', 'revision')} == {k: before[k] for k in ('mode', 'focus', 'selected', 'revision')}
-        await env.service.admit(inbound(env, 'builder', '/builder'))
+        await env.service.admit(inbound(env, 'builder', '/edit'))
         owner = (await env.service.snapshot())['users'][owner_job['user']]
         assert owner['mode'] == 'builder' and owner['focus'] == owner_project['id']
         assert owner['selected'] == guest_project['id']

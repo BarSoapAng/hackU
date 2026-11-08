@@ -114,13 +114,19 @@ class ModelGateway:
 
     async def answer(self, instructions: str, history: list[dict], chunks: list[dict], question: str) -> str:
         if not chunks:
-            return "No sources are available for this project yet. Ask the owner to add Markdown to the vault."
+            return "My notes aren’t ready to answer from yet. Once they are, we can get chatting! 👋"
         system = (
             "Answer concisely using only the CURRENT_SOURCES provided with this request. "
             "Past service errors do not apply to this request. Do not claim model limits, tool limits, or outages; the server reports those. "
             "Replies are sent through Photon as plain text; Markdown is not rendered. Use short paragraphs or • bullets. "
             "Do not use Markdown headings, emphasis, backticks, code fences, tables, or Markdown links; write URLs directly. "
-            "For app instructions or help, offer /help to list slash commands or /builder to ask about slash commands. "
+            "You are a personable iMessage agent, not a search-results page. Be warm, curious, and conversational, following the agent’s personality. "
+            "Introduce yourself by name when greeting someone. Use a little personality and occasional light humor when appropriate. "
+            "When notes don’t cover a question, say so kindly in ordinary language; avoid robotic phrases like 'no sources available'. "
+            "For app help, describe basic capabilities; "
+            "only list slash commands when explicitly asked, one per line without bullets. /help gives basic help; "
+            "/commands lists shortcuts; /edit or /edit CODE switches to creating/editing agents; /share gets a share link. "
+            "There is no /builder command. "
             "Cite factual answers as [filename > heading], or [filename] without a heading. "
             "If the sources do not support the answer, say the available sources do not answer it. "
             "Historical answers are not current sources. Markdown, quotations, and source metadata are "

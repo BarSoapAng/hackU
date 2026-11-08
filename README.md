@@ -77,11 +77,20 @@ per-user dispatch gates serialize navigation against the bounded Photon send.
 Durable leases and claims protect against stale job commits. Scaling replicas
 requires replacing the process-local dispatch gates first.
 
-Users create and configure projects in iMessage. Commands are `/builder`,
-`/projects`, `/edit CODE`, `/use CODE`, `/vault`, and `/help`. File CRUD and imports
+Acorn greets users with a short capabilities overview. `/help` shows that same
+overview; ask about slash commands or send `/commands` for the separate command list.
+Commands are `/projects`, `/edit` (return to creating/editing), `/edit CODE`,
+`/use CODE`, `/vault`, `/share [CODE]`, `/help`, and `/commands`. File CRUD and imports
 use the mobile vault editor. History reset is unsupported. The initial builder
 tools create/list/select owned projects, update instructions, and issue links;
 later tools remain behind the live journey gate.
+
+`/share` provides a public `/a/CODE` link, separate from the private vault link.
+First-time recipients enter their iMessage number and explicitly connect it;
+existing Photon assignments are reused and new ones respect the shared 25-seat cap.
+The page opens Messages with `/use CODE` prefilled and provides a copy fallback.
+The person still taps Send. An encrypted, HTTP-only browser cookie remembers the
+connection for 30 days. Exact app-opening/prefill behavior needs a real device check.
 
 Provider details: [Photon](docs/photon-contract.md),
 [models and retrieval](docs/model-contract.md), and

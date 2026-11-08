@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta property="og:title" content="Chat with __NAME__ on Acorn">
+  <meta property="og:description" content="A little agent, right in your messages.">
+  <title>Meet __NAME__ · Acorn</title>
+  <style nonce="__NONCE__">
+    :root{font-family:system-ui,sans-serif;color:#233b2b;background:#f5f2e9;color-scheme:light}
+    *{box-sizing:border-box}body{margin:0;padding:24px}main{max-width:460px;margin:8vh auto;background:#fffdf7;padding:32px;border:1px solid #dfdfcf;border-radius:24px}
+    .mascot{font-size:42px}h1{font-size:28px;letter-spacing:-1px;margin:18px 0 12px;overflow-wrap:anywhere}p{line-height:1.6}.muted{color:#586652;font-size:14px}
+    label{display:block;font-weight:600;margin:24px 0 8px}input,button,.button{font:inherit;border:1px solid #aebda6;border-radius:12px;padding:14px;width:100%}
+    input{background:white;margin-bottom:12px}button,.button{display:block;text-align:center;background:#31583b;color:white;cursor:pointer;text-decoration:none}
+    button:disabled{opacity:.6;cursor:wait}.secondary{background:transparent;color:#31583b;margin-top:12px}code{font-family:ui-monospace,monospace}
+    #status{min-height:24px;color:#755225}#ready{margin-top:24px}[hidden]{display:none!important}:focus-visible{outline:3px solid #9bb379;outline-offset:3px}
+  </style>
+</head>
+<body>
+<main data-code="__CODE__" data-destination="__DESTINATION__">
+  <div class="mascot" aria-hidden="true">🐿️</div>
+  <p class="muted">A little introduction from Acorn</p>
+  <h1>Meet __NAME__</h1>
+  <p>Your new agent is a text away. We’ll open Messages with your first message ready to send.</p>
+  <form id="connect">
+    <label for="phone">Your iMessage number</label>
+    <input id="phone" type="tel" autocomplete="tel" maxlength="32" placeholder="+1 204 555 0123" required>
+    <p class="muted">Use the number you text from, including its country code. This connects it to the agent; it doesn’t send a message.</p>
+    <button id="submit" type="submit">Connect &amp; open Messages</button>
+  </form>
+  <div id="ready" hidden>
+    <a id="open" class="button">Open in Messages</a>
+    <p class="muted">Tap Send when you’re ready. If your device doesn’t fill in the message, copy <code id="command"></code> and send it to <span id="destination"></span>.</p>
+    <button id="copy" class="secondary" type="button">Copy first message</button>
+    <button id="change" class="secondary" type="button">Use a different number</button>
+  </div>
+  <p id="status" role="status" aria-live="polite"></p>
+</main>
+<script nonce="__NONCE__">
+(() => {
+  const main = document.querySelector('main'), form = document.getElementById('connect');
+  const code = main.dataset.code, message = '/use ' + code;
+  const byId = id => document.getElementById(id);
+  function ready(destination, openNow) {
+    const apple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
+    const link = 'sms:' + destination + (apple ? '&' : '?') + 'body=' + encodeURIComponent(message);
+    byId('open').href = link;
+    byId('command').textContent = message;
+    byId('destination').textContent = destination;
+    form.hidden = true; byId('ready').hidden = false;
+    byId('status').textContent = 'All set! Your agent is ready to chat.';
+    if (openNow) location.href = link;
+  }
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); byId('submit').disabled = true; byId('status').textContent = 'Making introductions…';
+    try {
+      const response = await fetch('/api/agents/' + encodeURIComponent(code) + '/connect', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, cache: 'no-store',
+        body: JSON.stringify({phone: byId('phone').value})
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || 'We couldn’t connect just yet. Please try again.');
+      ready(result.destination, true);
+    } catch (error) { byId('status').textContent = error.message; }
+    finally { byId('submit').disabled = false; }
+  });
+  byId('copy').onclick = async () => {
+    try { await navigator.clipboard.writeText(message); byId('status').textContent = 'Copied! Paste it into Messages and tap Send.'; }
+    catch { byId('status').textContent = 'Copy this message: ' + message; }
+  };
+  byId('change').onclick = () => { form.hidden = false; byId('ready').hidden = true; byId('phone').focus(); };
+  if (main.dataset.destination) ready(main.dataset.destination, true);
+})();
+</script>
+</body>
+</html>

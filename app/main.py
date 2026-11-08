@@ -2,18 +2,25 @@
 
 import asyncio
 import contextlib
+import base64
+import html
+import json
 import logging
+import re
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
+from cryptography.exceptions import InvalidTag
+import httpx
 
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, StrictInt, StrictStr, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, ValidationError
 
 from app.database import DatabaseUnavailable
-from app.photon import PhotonError, WebhookError, verify_event
-from app.service import DomainError
+from app.photon import PhotonError, WebhookError, normalize_phone, verify_event
+from app.security import token_hash
+from app.service import DomainError, by_code, consume
 
 
 class FileWrite(BaseModel):
@@ -29,6 +36,11 @@ class FileUpdate(FileWrite):
 class FileDelete(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_version: StrictInt
+
+
+class AgentConnection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phone: StrictStr = Field(min_length=1, max_length=32)
 
 
 async def bounded_body(request: Request, limit: int) -> bytes:
@@ -134,6 +146,63 @@ def create_app(service, worker, webhook_secret: str, photon_project_id: str, *, 
             if receipt['status'] == 'accepted':
                 background_tasks.add_task(mark_read, inbound)
         return {"received": True}
+
+    @app.get("/a/{code}", response_class=HTMLResponse)
+    async def shared_agent(code: str, request: Request):
+        state = await service.snapshot()
+        project = by_code(state, code)
+        if not project:
+            raise DomainError("That agent is no longer available.", 404)
+        destination = ''
+        cookie = request.cookies.get('acorn_connection', '')
+        if cookie and len(cookie) < 1024:
+            try:
+                remembered = service.keys.decrypt(json.loads(base64.urlsafe_b64decode(cookie)), 'share-connection')
+                if remembered['expires'] > service.clock():
+                    destination = state['assignments'].get(remembered['phone'], {}).get('destination', '')
+            except (ValueError, KeyError, TypeError, InvalidTag):
+                pass
+        nonce = secrets.token_urlsafe(24)
+        page = Path(__file__).with_name('static').joinpath('share.html').read_text(encoding='utf-8')
+        values = {'__NONCE__': nonce, '__NAME__': project['name'], '__CODE__': project['code'], '__DESTINATION__': destination}
+        page = re.sub(r'__(?:NONCE|NAME|CODE|DESTINATION)__', lambda match: html.escape(values[match[0]], quote=True), page)
+        return HTMLResponse(page, headers={'Content-Security-Policy':
+            f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
+            "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"})
+
+    @app.post('/api/agents/{code}/connect')
+    async def connect_agent(code: str, request: Request):
+        if request.headers.get('origin', service.public_url) != service.public_url:
+            raise DomainError('Open the agent’s share link to connect.', 403)
+        project = by_code(await service.snapshot(), code)
+        if not project:
+            raise DomainError('That agent is no longer available.', 404)
+        try:
+            body = AgentConnection.model_validate_json(await bounded_body(request, 1024))
+            phone = normalize_phone(body.phone)
+        except (ValueError, ValidationError):
+            raise DomainError('Enter your iMessage number with its country code, such as +1 204 555 0123.') from None
+        now = service.clock()
+        def reserve(state):
+            consume(state, f'join-minute:{token_hash(request.client.host)}:{int(now // 60)}', 5)
+            consume(state, f'join-day:{token_hash(phone)}:{int(now // 86400)}', 10)
+        await service.store.transaction(reserve)
+        try:
+            async with service.gates['assignments']:
+                assignment = await worker.photon.enroll(phone, 'join:' + token_hash(phone))
+                def remember(state):
+                    state['assignments'][phone] = {'id': assignment.assignment_id, 'phone': assignment.phone,
+                        'destination': assignment.destination, 'created': assignment.created_at}
+                await service.store.transaction(remember)
+        except (PhotonError, httpx.HTTPError) as error:
+            if isinstance(error, PhotonError) and error.code == 'PHOTON_ASSIGNMENT_CAPACITY':
+                raise DomainError('This demo’s texting spots are full. Ask the person who shared the agent to make room.', 503) from None
+            raise DomainError('We couldn’t connect your number just yet. Please try again shortly.', 503) from None
+        response = JSONResponse({'destination': assignment.destination, 'message': '/use ' + project['code']})
+        sealed = service.keys.encrypt({'phone': phone, 'expires': now + 30 * 86400}, 'share-connection')
+        response.set_cookie('acorn_connection', base64.urlsafe_b64encode(json.dumps(sealed).encode()).decode(),
+                            max_age=30 * 86400, secure=True, httponly=True, samesite='lax')
+        return response
 
     @app.get("/vault", response_class=HTMLResponse)
     async def vault():
